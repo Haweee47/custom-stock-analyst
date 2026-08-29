@@ -7,3 +7,5 @@ lxml
 jinja2
 tqdm
 notion-client
+streamlit
+plotly
