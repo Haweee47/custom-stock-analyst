@@ -211,13 +211,49 @@ def main() -> None:
         markets = st.multiselect("시장", ["KOSPI", "KOSDAQ"], default=["KOSPI", "KOSDAQ"])
 
         caps = df["시가총액"].dropna() / 1e8
-        cap_min, cap_max = st.slider(
-            "시가총액 (억원)",
+        cap_ceiling = int(caps.max())
+
+        # 슬라이더와 숫자 입력이 서로를 갱신하도록 세션 상태를 공유한다
+        if "cap_range" not in st.session_state:
+            st.session_state.cap_range = (0, cap_ceiling)
+
+        st.markdown("**시가총액 (억원)**")
+        st.slider(
+            "시가총액 범위",
             min_value=0,
-            max_value=int(caps.max()),
-            value=(0, int(caps.max())),
+            max_value=cap_ceiling,
             step=100,
+            key="cap_range",
+            label_visibility="collapsed",
         )
+
+        def _sync_from_inputs() -> None:
+            low = st.session_state.cap_low
+            high = st.session_state.cap_high
+            st.session_state.cap_range = (min(low, high), max(low, high))
+
+        low_col, high_col = st.columns(2)
+        low_col.number_input(
+            "최소",
+            min_value=0,
+            max_value=cap_ceiling,
+            value=st.session_state.cap_range[0],
+            step=100,
+            key="cap_low",
+            on_change=_sync_from_inputs,
+        )
+        high_col.number_input(
+            "최대",
+            min_value=0,
+            max_value=cap_ceiling,
+            value=st.session_state.cap_range[1],
+            step=100,
+            key="cap_high",
+            on_change=_sync_from_inputs,
+        )
+
+        cap_min, cap_max = st.session_state.cap_range
+        st.caption(f"{cap_min:,}억원 ~ {cap_max:,}억원")
         keyword = st.text_input("종목명 검색", placeholder="예: 삼성")
 
     view = df[df["시장구분"].isin(markets)]
