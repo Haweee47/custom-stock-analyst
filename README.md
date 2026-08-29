@@ -92,10 +92,43 @@ KOSPI·KOSDAQ 전 종목(약 4,300개)의 시세·시가총액을
 | `tqdm` | 수집 진행률을 표시할 때 |
 | `notion-client` | 학습 일지를 Notion에 자동 기록할 때 |
 
-## 배포
+## 웹앱 실행
 
-Streamlit Cloud에 배포합니다. 배포 환경에서는 `.env` 대신
-앱 설정의 **Secrets**에 키를 넣습니다 (`.env` 파일은 절대 저장소에 올리지 않습니다).
+로컬에서 확인:
+
+```powershell
+streamlit run app.py
+```
+
+브라우저에서 `http://localhost:8501`이 열립니다. 이 주소는 **내 PC에서만** 보입니다.
+
+## 배포 (다른 사람도 볼 수 있게)
+
+[Streamlit Community Cloud](https://share.streamlit.io)에 무료로 배포합니다.
+
+1. https://share.streamlit.io 접속 → **GitHub 계정으로 로그인**
+2. **Create app** → **Deploy a public app from GitHub** 선택
+3. 아래 값을 입력
+   | 항목 | 값 |
+   |---|---|
+   | Repository | `Haweee47/custom-stock-analyst` |
+   | Branch | `main` |
+   | Main file path | `app.py` |
+4. **Advanced settings** → Python version `3.11` 선택
+5. 같은 화면의 **Secrets** 칸에 `.streamlit/secrets.toml.example` 내용을 붙여넣고
+   실제 키로 채웁니다
+6. **Deploy** 클릭 → 몇 분 뒤 `https://<앱이름>.streamlit.app` 주소가 생성됩니다
+
+배포 후 GitHub에 push하면 앱이 자동으로 다시 배포됩니다.
+
+### 배포 시 알아둘 점
+
+- **분석 캐시는 재시작하면 사라집니다.** Streamlit Cloud는 앱이 잠들거나 재시작하면
+  실행 중 만든 파일이 초기화됩니다. 캐시가 비면 그만큼 Gemini를 다시 호출하므로,
+  자주 조회되는 종목은 로컬에서 미리 생성해 `data/processed/analysis/`에 커밋해두면 좋습니다.
+- **키는 저장소에 올리지 않습니다.** `.env`와 `.streamlit/secrets.toml`은 `.gitignore`에
+  등록되어 있습니다. 배포용 키는 Streamlit Cloud의 Secrets 칸에만 넣습니다.
+- 공개 배포 전에 키를 **새로 발급**받는 것을 권합니다.
 
 ## 데이터 출처
 
