@@ -21,6 +21,8 @@ from src.analysis.gemini_analyzer import (
     load_financials,
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES
+from src.analysis.screens import SCREENS, apply_screens, screen_counts
+from src.collectors.sector_collector import load as load_sectors
 from src.collectors.news_collector import (
     fetch_price_history,
     price_performance,
@@ -48,7 +50,16 @@ st.set_page_config(page_title="리포트 셀프바", page_icon="📈", layout="w
 
 @st.cache_data
 def get_data() -> pd.DataFrame:
-    return load_financials()
+    """재무에 업종을 붙여 하나의 표로 다룬다."""
+    df = load_financials()
+    sectors = load_sectors()
+    if sectors.empty:
+        df["업종_대분류"] = "미분류"
+        df["업종_소분류"] = "미분류"
+        return df
+    merged = df.merge(sectors, on="종목코드", how="left")
+    merged[["업종_대분류", "업종_소분류"]] = merged[["업종_대분류", "업종_소분류"]].fillna("미분류")
+    return merged
 
 
 def stat_row(row: pd.Series) -> None:
@@ -213,6 +224,25 @@ def main() -> None:
         st.header("종목 찾기")
         markets = st.multiselect("시장", ["KOSPI", "KOSDAQ"], default=["KOSPI", "KOSDAQ"])
 
+        groups = sorted(df["업종_대분류"].dropna().unique())
+        group = st.selectbox("업종 대분류", ["전체"] + groups)
+
+        if group == "전체":
+            sub_options = ["전체"]
+        else:
+            sub_options = ["전체"] + sorted(
+                df.loc[df["업종_대분류"] == group, "업종_소분류"].dropna().unique()
+            )
+        sub = st.selectbox("업종 소분류", sub_options, disabled=(group == "전체"))
+
+        counts = screen_counts(df)
+        screens = st.multiselect(
+            "재무 특성",
+            list(SCREENS),
+            format_func=lambda name: f"{name} ({counts[name]:,})",
+            help="여러 개를 고르면 모두 만족하는 종목만 남습니다.",
+        )
+
         caps = df["시가총액"].dropna() / 1e8
         cap_ceiling = int(caps.max())
 
@@ -260,6 +290,12 @@ def main() -> None:
         keyword = st.text_input("종목명 검색", placeholder="예: 삼성")
 
     view = df[df["시장구분"].isin(markets)]
+    if group != "전체":
+        view = view[view["업종_대분류"] == group]
+        if sub != "전체":
+            view = view[view["업종_소분류"] == sub]
+    if screens:
+        view = apply_screens(view, screens)
     view = view[
         view["시가총액"].isna()
         | ((view["시가총액"] / 1e8 >= cap_min) & (view["시가총액"] / 1e8 <= cap_max))
