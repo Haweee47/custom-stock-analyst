@@ -307,8 +307,15 @@ def main() -> None:
 
     with st.expander("숫자로 보기"):
         cols = ["매출액", "영업이익", "당기순이익", "자산총계", "부채총계", "자본총계"]
+        # 소수점은 억원 단위에서 의미가 없으므로 반올림하고 쉼표만 남긴다
         table = pd.DataFrame(
-            {"항목": cols, "금액(억원)": [row.get(c) / 1e8 if pd.notna(row.get(c)) else None for c in cols]}
+            {
+                "항목": cols,
+                "금액(억원)": [
+                    f"{row.get(c) / 1e8:,.0f}" if pd.notna(row.get(c)) else "—"
+                    for c in cols
+                ],
+            }
         )
         st.dataframe(table, hide_index=True, width="stretch")
 

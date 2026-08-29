@@ -10,6 +10,8 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
+from src.collectors import indicators
+
 NEWS_URL = "https://finance.naver.com/item/news_news.naver"
 PRICE_URL = "https://finance.naver.com/item/sise_day.naver"
 HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
@@ -87,39 +89,36 @@ def fetch_price_history(stock_code: str, pages: int = 7) -> pd.DataFrame:
 
 
 def technical_summary(df: pd.DataFrame) -> dict:
-    """기술적 분석용 지표. 지표 계산은 코드가 하고 해석만 AI에 맡긴다."""
+    """기술적 분석에 쓸 지표를 모아 돌려준다.
+
+    지표 계산은 코드가 하고 AI에게는 해석만 맡긴다.
+    각 지표에는 상태 설명을 함께 담아 AI가 수치를 잘못 읽는 여지를 줄인다.
+    """
     if df.empty or len(df) < 20:
         return {}
 
     close = df["종가"]
-    latest = close.iloc[-1]
-    ma5, ma20 = close.rolling(5).mean().iloc[-1], close.rolling(20).mean().iloc[-1]
-    ma60 = close.rolling(60).mean().iloc[-1] if len(close) >= 60 else None
+    price = float(close.iloc[-1])
+    high, low = float(close.max()), float(close.min())
 
-    # RSI(14) - 상승분과 하락분의 비율로 과열·침체를 본다
-    delta = close.diff()
-    gain = delta.clip(lower=0).rolling(14).mean().iloc[-1]
-    loss = (-delta.clip(upper=0)).rolling(14).mean().iloc[-1]
-    rsi = 100 - 100 / (1 + gain / loss) if loss and loss > 0 else None
-
-    period_high, period_low = close.max(), close.min()
-    return {
+    summary = {
         "기간": f"{df['일자'].iloc[0]:%Y-%m-%d} ~ {df['일자'].iloc[-1]:%Y-%m-%d}",
         "거래일수": len(df),
-        "현재가": int(latest),
-        "5일이평": round(ma5),
-        "20일이평": round(ma20),
-        "60일이평": round(ma60) if ma60 else None,
-        "기간고가": int(period_high),
-        "기간저가": int(period_low),
-        "고가대비": round((latest / period_high - 1) * 100, 2),
-        "저가대비": round((latest / period_low - 1) * 100, 2),
-        "RSI14": round(rsi, 1) if rsi else None,
+        "현재가": int(price),
+        "기간고가": int(high),
+        "기간저가": int(low),
+        "고가대비": round((price / high - 1) * 100, 2),
+        "저가대비": round((price / low - 1) * 100, 2),
         "20일변동성": round(close.pct_change().rolling(20).std().iloc[-1] * 100, 2),
-        "거래량20일평균대비": round(
-            df["거래량"].iloc[-1] / df["거래량"].rolling(20).mean().iloc[-1], 2
-        ),
     }
+    summary.update(indicators.moving_averages(close, price))
+    summary.update(indicators.rsi(close))
+    summary.update(indicators.macd(close))
+    summary.update(indicators.bollinger(close, price))
+    summary.update(indicators.stochastic(df))
+    summary.update(indicators.ichimoku(df, price))
+    summary.update(indicators.volume_profile(df))
+    return {k: v for k, v in summary.items() if v is not None}
 
 
 def price_performance(df: pd.DataFrame) -> dict:

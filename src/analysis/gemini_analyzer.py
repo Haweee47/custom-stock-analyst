@@ -260,7 +260,8 @@ def gather_context(stock_code: str, perspective: str) -> dict:
     needed = PERSPECTIVES[perspective]["데이터"]
     context: dict = {}
     if "기술" in needed:
-        context["tech"] = technical_summary(fetch_price_history(stock_code))
+        # 일목균형표는 78거래일, 120일선은 120거래일이 필요해 1년치를 받는다
+        context["tech"] = technical_summary(fetch_price_history(stock_code, pages=25))
     if "뉴스" in needed:
         context["news"] = fetch_news(stock_code)
     return context
