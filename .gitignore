@@ -5,3 +5,4 @@ __pycache__/
 data/raw/
 reports/*.md
 .claude/settings.local.json
+data/processed/gemini_usage.json
