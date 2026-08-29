@@ -170,7 +170,11 @@ def main() -> None:
     if keyword:
         view = view[view["종목명"].str.contains(keyword, case=False, na=False)]
 
-    st.sidebar.caption(f"조건에 맞는 종목 {len(view):,}개")
+    st.sidebar.caption(f"조건에 맞는 종목 {len(view):,}개 / 전체 {len(df):,}개")
+    st.sidebar.caption(
+        "ETF·ETN·우선주는 재무제표가 없어 분석 대상에서 제외했습니다. "
+        "보통주만 다룹니다."
+    )
     if view.empty:
         st.warning("조건에 맞는 종목이 없습니다. 필터를 넓혀보세요.")
         return
