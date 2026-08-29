@@ -16,9 +16,11 @@ from src.analysis.gemini_analyzer import (
     DailyLimitReached,
     _usage_today,
     analyze,
+    gather_context,
     load_cached,
     load_financials,
 )
+from src.analysis.report_spec import LENGTHS, PERSPECTIVES
 
 # 검증된 참조 팔레트 - 강조 1색 + 맥락용 중립 회색만 쓴다
 ACCENT = "#2a78d6"
@@ -122,25 +124,31 @@ def distribution_chart(df: pd.DataFrame, row: pd.Series, metric: str) -> go.Figu
     return fig
 
 
-def render_analysis(result: dict) -> None:
-    a = result["분석"]
-    st.markdown(f"**요약** — {a['요약']}")
+def render_report(result: dict) -> None:
+    report = result["리포트"]
+    st.markdown(f"### {report['헤드라인']}")
+    st.caption(f"{result['관점']} 관점 · {result['분량']} · {result['모델']} · {result['생성시각']}")
+
+    st.markdown("**핵심 포인트**")
+    for point in report["핵심포인트"]:
+        st.markdown(f"- {point}")
+
+    for section in report["섹션"]:
+        st.markdown(f"**{section['소제목']}**")
+        st.write(section["본문"])
 
     left, right = st.columns(2)
     with left:
-        st.markdown("**재무 강점**")
-        for item in a["재무_강점"]:
+        st.markdown("**확인할 점**")
+        for item in report["체크포인트"]:
             st.markdown(f"- {item}")
     with right:
-        st.markdown("**재무 우려**")
-        for item in a["재무_우려"]:
+        st.markdown("**리스크 요인**")
+        for item in report["리스크요인"]:
             st.markdown(f"- {item}")
 
-    st.markdown(f"**밸류에이션** — {a['밸류에이션']}")
-    with st.expander("유의사항"):
-        for item in a["유의사항"]:
-            st.markdown(f"- {item}")
-    st.caption(f"{result['모델']} · {result['생성시각']} 생성")
+    with st.expander("이 리포트가 보지 못한 것"):
+        st.write(report["데이터한계"])
 
 
 def main() -> None:
@@ -218,28 +226,41 @@ def main() -> None:
         st.dataframe(table, hide_index=True, width="stretch")
 
     st.divider()
-    st.markdown("##### AI 분석")
-    used = _usage_today()
-    cached = load_cached(row["종목코드"])
+    st.markdown("##### AI 리포트")
 
+    opt_left, opt_right = st.columns(2)
+    perspective = opt_left.radio(
+        "분석 관점",
+        list(PERSPECTIVES),
+        horizontal=True,
+        captions=[PERSPECTIVES[k]["설명"] for k in PERSPECTIVES],
+    )
+    length = opt_right.radio(
+        "분량",
+        list(LENGTHS),
+        horizontal=True,
+        captions=[LENGTHS[k]["설명"] for k in LENGTHS],
+    )
+
+    cached = load_cached(row["종목코드"], perspective, length)
     if cached:
-        render_analysis(cached)
+        render_report(cached)
     else:
-        st.caption(f"오늘 신규 분석 {used}/{DAILY_LIMIT}건 사용")
-        if st.button("AI 분석 생성하기", type="primary"):
+        st.caption(f"오늘 신규 생성 {_usage_today()}/{DAILY_LIMIT}건 사용")
+        if st.button(f"{perspective} 관점으로 리포트 생성", type="primary"):
             try:
-                with st.spinner("분석 중... 약 5초 걸립니다"):
-                    result = analyze(row)
-                render_analysis(result)
+                with st.spinner("데이터를 모으고 리포트를 작성하는 중..."):
+                    context = gather_context(row["종목코드"], perspective)
+                    result = analyze(row, perspective, length, **context)
+                render_report(result)
             except DailyLimitReached as exc:
                 st.warning(str(exc))
             except ApiKeyMissing as exc:
-                # 운영자 설정 문제이므로 방문자에게는 원인을 노출하지 않는다
-                st.error("현재 AI 분석 기능을 이용할 수 없습니다. 잠시 후 다시 시도해주세요.")
+                st.error("현재 AI 리포트 기능을 이용할 수 없습니다. 잠시 후 다시 시도해주세요.")
                 st.caption("운영자: API 키 설정이 필요합니다.")
                 print(f"[설정 오류] {exc}", file=sys.stderr)
             except Exception as exc:
-                st.error("분석 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.")
+                st.error("리포트 생성 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.")
                 print(f"[분석 실패] {type(exc).__name__}: {exc}", file=sys.stderr)
 
     st.divider()
