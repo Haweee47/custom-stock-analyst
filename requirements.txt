@@ -2,7 +2,6 @@ requests
 pandas
 python-dotenv
 google-generativeai
-pykrx
 beautifulsoup4
 lxml
 jinja2
