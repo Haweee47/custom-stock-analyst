@@ -1,4 +1,4 @@
-"""모든 상장사의 기업 리포트 - Streamlit 웹앱."""
+"""리포트 셀프바 - Streamlit 웹앱."""
 import sys
 from pathlib import Path
 
@@ -43,7 +43,7 @@ NEUTRAL = "#d0cfc9"
 GRID = "#ebeae5"
 TEXT_MUTED = "#52514e"
 
-st.set_page_config(page_title="모든 상장사의 기업 리포트", page_icon="📈", layout="wide")
+st.set_page_config(page_title="리포트 셀프바", page_icon="📈", layout="wide")
 
 
 @st.cache_data
@@ -205,8 +205,8 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
 def main() -> None:
     df = get_data()
 
-    st.title("모든 상장사의 기업 리포트")
-    st.caption("리포트가 없는 종목도, 내가 보고 싶은 관점으로")
+    st.title("리포트 셀프바")
+    st.caption("종목도, 관점도 골라 담으세요 · 코스피·코스닥 전 종목")
     st.caption(DISCLAIMER)
 
     with st.sidebar:
