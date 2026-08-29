@@ -108,6 +108,21 @@ def _num(value, unit: str = "", scale: float = 1.0, digits: int = 0) -> str:
     return f"{value / scale:,.{digits}f}{unit}"
 
 
+def won(value) -> str:
+    """원 단위 금액을 조·억으로 끊어 읽기 쉽게 만든다.
+
+    12,075,039억원처럼 자릿수가 길면 눈으로 세어야 하므로
+    1조(1e12원) 이상은 '1,207조 5,039억'으로 나눠 적는다.
+    """
+    if value is None or pd.isna(value):
+        return "—"
+    eok = value / 1e8
+    if abs(eok) < 10_000:
+        return f"{eok:,.0f}억원"
+    jo, rest = divmod(int(round(eok)), 10_000)
+    return f"{jo:,}조 {rest:,}억원" if rest else f"{jo:,}조원"
+
+
 def _signed(value) -> str:
     if value is None or pd.isna(value):
         return "—"
@@ -192,7 +207,7 @@ def yearly_table_html(row: pd.Series) -> str:
 def metrics_html(row: pd.Series, perf: dict | None, tech: dict | None) -> str:
     price = [
         ("현재주가", _num(row.get("현재가"), "원")),
-        ("시가총액", _num(row.get("시가총액"), "억원", 1e8)),
+        ("시가총액", won(row.get("시가총액"))),
         ("발행주식수", _num(row.get("상장주식수"), "천주", 1e3)),
         ("외국인비율", _num(row.get("외국인비율"), "%", digits=2)),
     ]

@@ -10,3 +10,4 @@ notion-client
 streamlit
 plotly
 xhtml2pdf
+matplotlib

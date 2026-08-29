@@ -33,6 +33,7 @@ from src.report.report_view import (
     footer_html,
     header_html,
     metrics_html,
+    won,
     yearly_table_html,
 )
 
@@ -55,7 +56,7 @@ def stat_row(row: pd.Series) -> None:
     cols = st.columns(6)
     items = [
         ("현재가", row.get("현재가"), "{:,.0f}원"),
-        ("시가총액", row.get("시가총액"), "{:,.0f}억"),
+        ("시가총액", row.get("시가총액"), None),
         ("PER", row.get("PER"), "{:,.2f}배"),
         ("부채비율", row.get("부채비율"), "{:,.2f}%"),
         ("영업이익률", row.get("영업이익률"), "{:,.2f}%"),
@@ -64,9 +65,10 @@ def stat_row(row: pd.Series) -> None:
     for col, (label, value, fmt) in zip(cols, items):
         if pd.isna(value):
             col.metric(label, "—")
+        elif fmt is None:
+            col.metric(label, won(value))
         else:
-            shown = value / 1e8 if label == "시가총액" else value
-            col.metric(label, fmt.format(shown))
+            col.metric(label, fmt.format(value))
 
 
 def profit_chart(row: pd.Series) -> go.Figure | None:
@@ -191,7 +193,7 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
     try:
         st.download_button(
             "PDF로 저장",
-            data=render_pdf(row, result, perf, tech),
+            data=render_pdf(row, result, perf, tech, prices),
             file_name=pdf_filename(row, result),
             mime="application/pdf",
         )
