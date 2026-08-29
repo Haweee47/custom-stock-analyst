@@ -21,6 +21,12 @@ from src.analysis.gemini_analyzer import (
     load_financials,
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES
+from src.collectors.news_collector import (
+    fetch_price_history,
+    price_performance,
+    technical_summary,
+)
+from src.report.report_view import body_html, footer_html, header_html, metrics_html
 
 # 검증된 참조 팔레트 - 강조 1색 + 맥락용 중립 회색만 쓴다
 ACCENT = "#2a78d6"
@@ -124,31 +130,53 @@ def distribution_chart(df: pd.DataFrame, row: pd.Series, metric: str) -> go.Figu
     return fig
 
 
-def render_report(result: dict) -> None:
-    report = result["리포트"]
-    st.markdown(f"### {report['헤드라인']}")
-    st.caption(f"{result['관점']} 관점 · {result['분량']} · {result['모델']} · {result['생성시각']}")
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_price_history(stock_code: str) -> pd.DataFrame:
+    """차트와 등락률에 쓰는 약 1년치 시세. 조회가 잦으므로 1시간 캐시한다."""
+    return fetch_price_history(stock_code, pages=25)
 
-    st.markdown("**핵심 포인트**")
-    for point in report["핵심포인트"]:
-        st.markdown(f"- {point}")
 
-    for section in report["섹션"]:
-        st.markdown(f"**{section['소제목']}**")
-        st.write(section["본문"])
+def price_chart(prices: pd.DataFrame) -> go.Figure | None:
+    if prices.empty:
+        return None
+    fig = go.Figure(
+        go.Scatter(
+            x=prices["일자"],
+            y=prices["종가"],
+            mode="lines",
+            line=dict(color=ACCENT, width=1.5),
+            hovertemplate="%{x|%Y-%m-%d}<br>%{y:,.0f}원<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        height=190,
+        margin=dict(l=8, r=8, t=8, b=8),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=TEXT_MUTED, size=10),
+        xaxis=dict(showgrid=False, zeroline=False),
+        yaxis=dict(showgrid=True, gridcolor=GRID, gridwidth=1, zeroline=False, side="right"),
+        showlegend=False,
+    )
+    return fig
 
-    left, right = st.columns(2)
+
+def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
+    st.html(header_html(row, result))
+
+    left, right = st.columns([1, 2.1], gap="medium")
     with left:
-        st.markdown("**확인할 점**")
-        for item in report["체크포인트"]:
-            st.markdown(f"- {item}")
+        perf = price_performance(prices) if not prices.empty else None
+        tech = technical_summary(prices) if not prices.empty else None
+        st.html(metrics_html(row, perf, tech))
+        fig = price_chart(prices)
+        if fig:
+            st.caption("주가 추이 (1년)")
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     with right:
-        st.markdown("**리스크 요인**")
-        for item in report["리스크요인"]:
-            st.markdown(f"- {item}")
+        st.html(body_html(result))
 
-    with st.expander("이 리포트가 보지 못한 것"):
-        st.write(report["데이터한계"])
+    st.html(footer_html(result))
 
 
 def main() -> None:
@@ -244,7 +272,7 @@ def main() -> None:
 
     cached = load_cached(row["종목코드"], perspective, length)
     if cached:
-        render_report(cached)
+        render_report(cached, row, get_price_history(row["종목코드"]))
     else:
         st.caption(f"오늘 신규 생성 {_usage_today()}/{DAILY_LIMIT}건 사용")
         if st.button(f"{perspective} 관점으로 리포트 생성", type="primary"):
@@ -252,7 +280,7 @@ def main() -> None:
                 with st.spinner("데이터를 모으고 리포트를 작성하는 중..."):
                     context = gather_context(row["종목코드"], perspective)
                     result = analyze(row, perspective, length, **context)
-                render_report(result)
+                render_report(result, row, get_price_history(row["종목코드"]))
             except DailyLimitReached as exc:
                 st.warning(str(exc))
             except ApiKeyMissing as exc:

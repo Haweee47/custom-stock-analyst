@@ -122,6 +122,22 @@ def technical_summary(df: pd.DataFrame) -> dict:
     }
 
 
+def price_performance(df: pd.DataFrame) -> dict:
+    """리포트 좌측 박스에 넣을 기간별 주가 등락률. 거래일 기준으로 되짚는다."""
+    if df.empty:
+        return {}
+    close = df["종가"]
+    latest = close.iloc[-1]
+    periods = {"1개월": 20, "3개월": 60, "6개월": 120, "12개월": 240}
+    out = {}
+    for label, days in periods.items():
+        if len(close) > days:
+            out[label] = round((latest / close.iloc[-1 - days] - 1) * 100, 1)
+        else:
+            out[label] = None
+    return out
+
+
 if __name__ == "__main__":
     import sys
 
