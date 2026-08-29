@@ -57,10 +57,15 @@ def tidy_financials(raw: pd.DataFrame) -> pd.DataFrame:
     df = df[df["account_nm"].isin(KEY_ACCOUNTS)].copy()
     df["_fs_rank"] = df["fs_div"].map(FS_PRIORITY).fillna(9)
     df["_sj_rank"] = df["sj_div"].map(SJ_PRIORITY).fillna(9)
-    df["금액"] = pd.to_numeric(
-        df["thstrm_amount"].astype(str).str.replace(",", "", regex=False),
-        errors="coerce",
-    )
+    # 당기만 쓰면 추이를 볼 수 없다. DART가 함께 주는 전기·전전기도 살린다.
+    for src, label in [
+        ("thstrm_amount", "당기"),
+        ("frmtrm_amount", "전기"),
+        ("bfefrmtrm_amount", "전전기"),
+    ]:
+        df[label] = pd.to_numeric(
+            df[src].astype(str).str.replace(",", "", regex=False), errors="coerce"
+        )
 
     # 같은 계정이 CFS/OFS로 중복 제공되므로 우선순위가 높은 쪽만 남긴다
     picked = (
@@ -68,7 +73,14 @@ def tidy_financials(raw: pd.DataFrame) -> pd.DataFrame:
         .groupby(["stock_code", "account_nm"], as_index=False)
         .first()
     )
-    wide = picked.pivot(index="stock_code", columns="account_nm", values="금액")
+    frames = []
+    for label in ["당기", "전기", "전전기"]:
+        part = picked.pivot(index="stock_code", columns="account_nm", values=label)
+        suffix = "" if label == "당기" else f"_{label}"
+        part.columns = [f"{c}{suffix}" for c in part.columns]
+        frames.append(part)
+
+    wide = pd.concat(frames, axis=1)
     wide.index.name = "종목코드"
     return wide.reset_index()
 

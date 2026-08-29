@@ -9,3 +9,4 @@ tqdm
 notion-client
 streamlit
 plotly
+xhtml2pdf

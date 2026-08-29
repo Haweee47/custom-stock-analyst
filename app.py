@@ -26,7 +26,15 @@ from src.collectors.news_collector import (
     price_performance,
     technical_summary,
 )
-from src.report.report_view import body_html, footer_html, header_html, metrics_html
+from src.report.report_pdf import filename as pdf_filename
+from src.report.report_pdf import render_pdf
+from src.report.report_view import (
+    body_html,
+    footer_html,
+    header_html,
+    metrics_html,
+    yearly_table_html,
+)
 
 # 검증된 참조 팔레트 - 강조 1색 + 맥락용 중립 회색만 쓴다
 ACCENT = "#2a78d6"
@@ -162,12 +170,13 @@ def price_chart(prices: pd.DataFrame) -> go.Figure | None:
 
 
 def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
+    perf = price_performance(prices) if not prices.empty else None
+    tech = technical_summary(prices) if not prices.empty else None
+
     st.html(header_html(row, result))
 
     left, right = st.columns([1, 2.1], gap="medium")
     with left:
-        perf = price_performance(prices) if not prices.empty else None
-        tech = technical_summary(prices) if not prices.empty else None
         st.html(metrics_html(row, perf, tech))
         fig = price_chart(prices)
         if fig:
@@ -176,7 +185,19 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
     with right:
         st.html(body_html(result))
 
+    st.html(yearly_table_html(row))
     st.html(footer_html(result))
+
+    try:
+        st.download_button(
+            "PDF로 저장",
+            data=render_pdf(row, result, perf, tech),
+            file_name=pdf_filename(row, result),
+            mime="application/pdf",
+        )
+    except Exception as exc:
+        st.caption("PDF 저장을 준비하지 못했습니다.")
+        print(f"[PDF 실패] {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 def main() -> None:
