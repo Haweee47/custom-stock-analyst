@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 from src.analysis.gemini_analyzer import (
     DAILY_LIMIT,
     DISCLAIMER,
+    ApiKeyMissing,
     DailyLimitReached,
     _usage_today,
     analyze,
@@ -232,8 +233,14 @@ def main() -> None:
                 render_analysis(result)
             except DailyLimitReached as exc:
                 st.warning(str(exc))
+            except ApiKeyMissing as exc:
+                # 운영자 설정 문제이므로 방문자에게는 원인을 노출하지 않는다
+                st.error("현재 AI 분석 기능을 이용할 수 없습니다. 잠시 후 다시 시도해주세요.")
+                st.caption("운영자: API 키 설정이 필요합니다.")
+                print(f"[설정 오류] {exc}", file=sys.stderr)
             except Exception as exc:
-                st.error(f"분석에 실패했습니다: {exc}")
+                st.error("분석 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.")
+                print(f"[분석 실패] {type(exc).__name__}: {exc}", file=sys.stderr)
 
     st.divider()
     st.caption(DISCLAIMER)

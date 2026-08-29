@@ -58,6 +58,10 @@ class DailyLimitReached(RuntimeError):
     """하루 신규 분석 생성 상한에 도달했을 때."""
 
 
+class ApiKeyMissing(RuntimeError):
+    """API 키가 설정되지 않았을 때. 이용자 잘못이 아니라 운영자 설정 문제다."""
+
+
 # 클라이언트를 매번 새로 만들면 임시 객체가 GC되면서 내부 HTTP 연결이 닫힌다
 _CLIENT: genai.Client | None = None
 
@@ -77,7 +81,10 @@ def _client() -> genai.Client:
         except Exception:
             key = None
     if not key:
-        raise RuntimeError("GEMINI_API_KEY가 없습니다. .env 또는 Streamlit Secrets에 넣어주세요.")
+        raise ApiKeyMissing(
+            "GEMINI_API_KEY가 설정되지 않았습니다. "
+            "로컬은 .env, 배포 환경은 Streamlit Cloud의 Settings > Secrets에 넣어주세요."
+        )
     _CLIENT = genai.Client(api_key=key)
     return _CLIENT
 
