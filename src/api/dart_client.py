@@ -8,14 +8,16 @@ from xml.etree import ElementTree
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 load_dotenv()
 
 RAW_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 BASE_URL = "https://opendart.fss.or.kr/api"
 CORP_CODE_PATH = RAW_DIR / "dart_corp_codes.csv"
-REQUEST_DELAY = 0.1
-MULTI_BATCH_SIZE = 100
+REQUEST_DELAY = 0.2
+# 100개를 한 번에 요청하면 응답이 커져 DART가 JSON 대신 HTML 오류 페이지를 준다
+MULTI_BATCH_SIZE = 50
 
 # 보고서 코드: 사업보고서(연간), 반기, 1분기, 3분기
 REPORT_CODES = {"사업보고서": "11011", "반기보고서": "11012", "1분기": "11013", "3분기": "11014"}
@@ -26,6 +28,10 @@ NO_DATA_STATUS = "013"
 
 class DartError(RuntimeError):
     """DART API가 정상(000)이 아닌 status를 돌려줬을 때."""
+
+
+class DartOversizedResponse(RuntimeError):
+    """응답이 커서 DART가 JSON 대신 HTML 오류 페이지를 돌려줬을 때."""
 
 
 def _api_key() -> str:
@@ -40,8 +46,11 @@ def _api_key() -> str:
 
 def _get(endpoint: str, **params) -> dict:
     params["crtfc_key"] = _api_key()
-    response = requests.get(f"{BASE_URL}/{endpoint}", params=params, timeout=20)
+    response = requests.get(f"{BASE_URL}/{endpoint}", params=params, timeout=30)
     response.raise_for_status()
+
+    if not response.headers.get("content-type", "").startswith("application/json"):
+        raise DartOversizedResponse(f"{endpoint}: JSON이 아닌 응답 (요청량 초과 추정)")
     payload = response.json()
 
     status = payload.get("status")
@@ -105,17 +114,31 @@ def get_financials(
     reprt_code = REPORT_CODES[report]
     frames = []
 
-    for start in range(0, len(corp_codes), MULTI_BATCH_SIZE):
-        batch = corp_codes[start : start + MULTI_BATCH_SIZE]
-        payload = _get(
-            "fnlttMultiAcnt.json",
-            corp_code=",".join(batch),
-            bsns_year=str(year),
-            reprt_code=reprt_code,
-        )
+    def fetch(batch: list[str]) -> None:
+        try:
+            payload = _get(
+                "fnlttMultiAcnt.json",
+                corp_code=",".join(batch),
+                bsns_year=str(year),
+                reprt_code=reprt_code,
+            )
+        except DartOversizedResponse:
+            # 응답이 크면 절반으로 나눠 다시 시도한다
+            if len(batch) == 1:
+                return
+            mid = len(batch) // 2
+            fetch(batch[:mid])
+            fetch(batch[mid:])
+            return
+
         if payload["list"]:
             frames.append(pd.DataFrame(payload["list"]))
         time.sleep(REQUEST_DELAY)
+
+    for start in tqdm(
+        range(0, len(corp_codes), MULTI_BATCH_SIZE), desc=f"DART 재무 {year} {report}"
+    ):
+        fetch(corp_codes[start : start + MULTI_BATCH_SIZE])
 
     if not frames:
         return pd.DataFrame()

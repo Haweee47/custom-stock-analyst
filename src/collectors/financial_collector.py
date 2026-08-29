@@ -1,0 +1,120 @@
+"""DART 재무 데이터를 종목별로 모아 분석용 테이블로 정리한다."""
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from src.api.dart_client import get_financials, map_stock_to_corp
+
+RAW_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
+PROCESSED_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
+
+# 연결재무제표(CFS)를 우선 쓰고, 없는 회사만 개별재무제표(OFS)로 채운다
+FS_PRIORITY = {"CFS": 0, "OFS": 1}
+# 같은 계정이 손익계산서(IS)와 포괄손익계산서(CIS)에 모두 실리므로 IS를 우선한다
+SJ_PRIORITY = {"BS": 0, "IS": 0, "CIS": 1}
+# DART는 회사마다 계정명 표기가 조금씩 다르므로 대표 이름으로 통일한다
+ACCOUNT_ALIASES = {
+    "당기순이익(손실)": "당기순이익",
+    "영업이익(손실)": "영업이익",
+    "매출액(수익)": "매출액",
+}
+KEY_ACCOUNTS = [
+    "자산총계",
+    "부채총계",
+    "자본총계",
+    "매출액",
+    "영업이익",
+    "당기순이익",
+]
+
+
+def latest_snapshot() -> Path:
+    files = sorted(RAW_DIR.glob("stock_snapshot_*.csv"))
+    if not files:
+        raise FileNotFoundError(
+            "종목 스냅샷이 없습니다. 먼저 src/collectors/stock_collector.py를 실행하세요."
+        )
+    return files[-1]
+
+
+def load_target_stocks() -> pd.DataFrame:
+    """ETF·ETN·우선주를 제외한 보통주만 분석 대상으로 삼는다."""
+    df = pd.read_csv(latest_snapshot(), dtype={"종목코드": str})
+    return df[df["종목구분"] == "보통주"].reset_index(drop=True)
+
+
+def _pick_amount(group: pd.DataFrame) -> pd.Series:
+    return group.sort_values("_fs_rank").iloc[0]
+
+
+def tidy_financials(raw: pd.DataFrame) -> pd.DataFrame:
+    """DART 롱포맷 응답을 종목코드 1행 × 계정 1열의 넓은 표로 바꾼다."""
+    df = raw.copy()
+    df["account_nm"] = df["account_nm"].replace(ACCOUNT_ALIASES)
+    df = df[df["account_nm"].isin(KEY_ACCOUNTS)].copy()
+    df["_fs_rank"] = df["fs_div"].map(FS_PRIORITY).fillna(9)
+    df["_sj_rank"] = df["sj_div"].map(SJ_PRIORITY).fillna(9)
+    df["금액"] = pd.to_numeric(
+        df["thstrm_amount"].astype(str).str.replace(",", "", regex=False),
+        errors="coerce",
+    )
+
+    # 같은 계정이 CFS/OFS로 중복 제공되므로 우선순위가 높은 쪽만 남긴다
+    picked = (
+        df.sort_values(["_fs_rank", "_sj_rank"])
+        .groupby(["stock_code", "account_nm"], as_index=False)
+        .first()
+    )
+    wide = picked.pivot(index="stock_code", columns="account_nm", values="금액")
+    wide.index.name = "종목코드"
+    return wide.reset_index()
+
+
+def add_derived_metrics(df: pd.DataFrame) -> pd.DataFrame:
+    """재무비율은 원본 값만으로는 비교가 어려우므로 파생 지표를 계산해 둔다."""
+    if "부채총계" in df and "자본총계" in df:
+        df["부채비율"] = (df["부채총계"] / df["자본총계"] * 100).round(2)
+    if "영업이익" in df and "매출액" in df:
+        df["영업이익률"] = (df["영업이익"] / df["매출액"] * 100).round(2)
+    if "당기순이익" in df and "자본총계" in df:
+        df["ROE_계산"] = (df["당기순이익"] / df["자본총계"] * 100).round(2)
+    return df
+
+
+def collect(year: int, report: str = "사업보고서") -> pd.DataFrame:
+    stocks = load_target_stocks()
+    mapping = map_stock_to_corp(stocks["종목코드"].tolist())
+    print(f"분석 대상 보통주 {len(stocks)}개 중 DART 매칭 {len(mapping)}개")
+
+    raw = get_financials(list(mapping.values()), year, report)
+    if raw.empty:
+        print(f"{year}년 {report} 데이터가 없습니다.")
+        return pd.DataFrame()
+
+    wide = add_derived_metrics(tidy_financials(raw))
+    merged = stocks.merge(wide, on="종목코드", how="left")
+    merged["기준연도"] = year
+    merged["보고서"] = report
+    return merged
+
+
+def save(df: pd.DataFrame, year: int) -> Path:
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    out = PROCESSED_DIR / f"financials_{year}.csv"
+    df.to_csv(out, index=False, encoding="utf-8-sig")
+    return out
+
+
+if __name__ == "__main__":
+    if sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    year = int(sys.argv[1]) if len(sys.argv) > 1 else 2025
+    result = collect(year)
+    if not result.empty:
+        path = save(result, year)
+        filled = result["매출액"].notna().sum()
+        print(f"{len(result)}개 종목 저장 완료 (재무 확보 {filled}개): {path}")
