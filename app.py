@@ -1,4 +1,4 @@
-"""초소형주 맞춤형 AI 리포트 생성기 - Streamlit 웹앱."""
+"""모든 상장사의 기업 리포트 - Streamlit 웹앱."""
 import sys
 from pathlib import Path
 
@@ -43,7 +43,7 @@ NEUTRAL = "#d0cfc9"
 GRID = "#ebeae5"
 TEXT_MUTED = "#52514e"
 
-st.set_page_config(page_title="AI 종목 리포트", page_icon="📊", layout="wide")
+st.set_page_config(page_title="모든 상장사의 기업 리포트", page_icon="📈", layout="wide")
 
 
 @st.cache_data
@@ -205,7 +205,8 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
 def main() -> None:
     df = get_data()
 
-    st.title("초소형주 맞춤형 AI 리포트")
+    st.title("모든 상장사의 기업 리포트")
+    st.caption("리포트가 없는 종목도, 내가 보고 싶은 관점으로")
     st.caption(DISCLAIMER)
 
     with st.sidebar:
