@@ -46,9 +46,13 @@ def rsi(close: pd.Series, period: int = 14) -> dict:
     gain = delta.clip(lower=0).ewm(alpha=1 / period, adjust=False).mean()
     loss = (-delta.clip(upper=0)).ewm(alpha=1 / period, adjust=False).mean()
     last_gain, last_loss = _last(gain), _last(loss)
-    if last_loss is None or last_loss == 0:
+    if last_gain is None or last_loss is None:
         return {}
-    value = 100 - 100 / (1 + last_gain / last_loss)
+    if last_loss == 0:
+        # 기간 내내 하락이 없으면 RSI는 정의상 100이다
+        value = 100.0 if last_gain > 0 else 50.0
+    else:
+        value = 100 - 100 / (1 + last_gain / last_loss)
     state = "과매수 구간" if value >= 70 else "과매도 구간" if value <= 30 else "중립 구간"
     return {"RSI(14)": _round(value, 1), "RSI_상태": state}
 

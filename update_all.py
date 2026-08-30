@@ -1,0 +1,107 @@
+"""매일 돌리는 데이터 갱신 배치.
+
+시세 → 재무 → 업종 → 공시 순서로 돈다. 재무는 시세 목록(보통주)을 쓰고,
+공시 등급은 종목코드가 필요하므로 순서가 중요하다.
+
+    python update_all.py            전체 갱신
+    python update_all.py --quick    시세와 공시만 (재무·업종은 자주 안 바뀐다)
+"""
+import sys
+import time
+import traceback
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+
+from src.collectors import dataset_meta  # noqa: E402
+
+
+def _run(label: str, function) -> tuple[bool, str]:
+    print(f"\n{'=' * 56}\n[{label}] 시작\n{'=' * 56}")
+    started = time.time()
+    try:
+        note = function()
+        elapsed = time.time() - started
+        dataset_meta.stamp(label, note)
+        print(f"[{label}] 완료 — {note} ({elapsed:.0f}초)")
+        return True, note
+    except Exception as exc:
+        print(f"[{label}] 실패 — {type(exc).__name__}: {exc}")
+        traceback.print_exc()
+        return False, str(exc)
+
+
+def update_prices() -> str:
+    from src.collectors.stock_collector import collect_market_snapshot, save_snapshot
+
+    snapshot = collect_market_snapshot()
+    save_snapshot(snapshot, datetime.now().strftime("%Y%m%d"))
+    counts = snapshot["종목구분"].value_counts()
+    return f"{len(snapshot):,}개 종목 (보통주 {counts.get('보통주', 0):,})"
+
+
+def update_financials() -> str:
+    from src.collectors.financial_collector import collect, save
+
+    year = datetime.now().year - 1
+    result = collect(year)
+    if result.empty:
+        raise RuntimeError(f"{year}년 재무 데이터가 비어 있습니다")
+    save(result, year)
+    return f"{len(result):,}개 종목, 재무 확보 {int(result['매출액'].notna().sum()):,}개"
+
+
+def update_sectors() -> str:
+    from src.collectors.sector_collector import collect, save
+
+    result = collect()
+    save(result)
+    return f"{len(result):,}개 종목 업종 매핑"
+
+
+def update_disclosures() -> str:
+    from src.collectors.disclosure_batch import collect, save
+
+    result = collect()
+    save(result)
+    major = int((result["공시성격"] == "중대 공시").sum())
+    return f"{len(result):,}개 종목 (중대 공시 {major}개)"
+
+
+STEPS = [
+    ("시세", update_prices, True),
+    ("재무", update_financials, False),
+    ("업종", update_sectors, False),
+    ("공시", update_disclosures, True),
+]
+
+
+def main() -> int:
+    quick = "--quick" in sys.argv
+    steps = [(name, fn) for name, fn, in_quick in STEPS if in_quick or not quick]
+
+    print(f"데이터 갱신 시작 — {datetime.now():%Y-%m-%d %H:%M}")
+    if quick:
+        print("(--quick: 시세와 공시만 갱신)")
+
+    results = [(name, *_run(name, fn)) for name, fn in steps]
+
+    print(f"\n{'=' * 56}\n요약\n{'=' * 56}")
+    for name, ok, note in results:
+        print(f"  {'성공' if ok else '실패'}  {name:5} {note[:60]}")
+    print(f"\n{dataset_meta.summary_line()}")
+
+    failed = [name for name, ok, _ in results if not ok]
+    if failed:
+        print(f"\n실패한 단계: {', '.join(failed)}")
+        return 1
+    print("\n전체 완료. 배포에 반영하려면 커밋 후 푸시하세요.")
+    return 0
+
+
+if __name__ == "__main__":
+    if sys.stdout.encoding.lower() != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8")
+    raise SystemExit(main())

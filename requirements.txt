@@ -4,10 +4,10 @@ python-dotenv
 google-genai
 beautifulsoup4
 lxml
-jinja2
 tqdm
 notion-client
 streamlit
 plotly
 xhtml2pdf
 matplotlib
+pytest

@@ -26,15 +26,20 @@ from src.analysis.report_spec import (  # noqa: E402
     SYSTEM_RULES,
 )
 
+from src.analysis import usage_limit  # noqa: E402
+from src.analysis.usage_limit import (  # noqa: E402
+    DAILY_LIMIT,
+    DailyLimitReached,
+    SessionLimitReached,
+)
+
 PROCESSED_DIR = ROOT / "data" / "processed"
 CACHE_DIR = PROCESSED_DIR / "analysis"
-USAGE_PATH = PROCESSED_DIR / "gemini_usage.json"
 
 load_dotenv(ROOT / ".env")
 
 MODEL = "gemini-3.1-flash-lite"
 CACHE_TTL_DAYS = 7
-DAILY_LIMIT = 100
 
 DISCLAIMER = (
     "이 리포트는 AI가 공개 데이터로 생성한 정보이며 투자 권유가 아닙니다. "
@@ -43,10 +48,6 @@ DISCLAIMER = (
 )
 
 _CLIENT: genai.Client | None = None
-
-
-class DailyLimitReached(RuntimeError):
-    """하루 신규 분석 생성 상한에 도달했을 때."""
 
 
 class ApiKeyMissing(RuntimeError):
@@ -89,21 +90,6 @@ def load_cached(stock_code: str, perspective: str, length: str) -> dict | None:
     if datetime.now() - created > timedelta(days=CACHE_TTL_DAYS):
         return None
     return data
-
-
-def _usage_today() -> int:
-    if not USAGE_PATH.exists():
-        return 0
-    log = json.loads(USAGE_PATH.read_text(encoding="utf-8"))
-    return log.get(datetime.now().strftime("%Y-%m-%d"), 0)
-
-
-def _record_usage() -> None:
-    log = json.loads(USAGE_PATH.read_text(encoding="utf-8")) if USAGE_PATH.exists() else {}
-    today = datetime.now().strftime("%Y-%m-%d")
-    log[today] = log.get(today, 0) + 1
-    USAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    USAGE_PATH.write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _fmt(value, unit: str = "", scale: float = 1.0) -> str:
@@ -203,10 +189,7 @@ def analyze(
         if cached:
             return cached
 
-    if _usage_today() >= DAILY_LIMIT:
-        raise DailyLimitReached(
-            f"오늘 신규 분석 한도({DAILY_LIMIT}건)에 도달했습니다. 내일 다시 시도해주세요."
-        )
+    usage_limit.check()
 
     response = _client().models.generate_content(
         model=MODEL,
@@ -234,8 +217,12 @@ def analyze(
     _cache_path(stock_code, perspective, length).write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    _record_usage()
+    usage_limit.record()
     return result
+
+
+def _usage_today() -> int:
+    return usage_limit.used_today()
 
 
 def load_financials(year: int = 2025) -> pd.DataFrame:

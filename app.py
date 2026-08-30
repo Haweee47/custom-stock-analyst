@@ -22,6 +22,8 @@ from src.analysis.gemini_analyzer import (
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES
 from src.analysis.screens import SCREENS, apply_screens, screen_counts
+from src.analysis.usage_limit import SESSION_LIMIT, SessionLimitReached, remaining_today
+from src.collectors import dataset_meta
 from src.collectors.disclosure_batch import TIER_HELP, TIER_LABELS
 from src.collectors.disclosure_batch import load as load_disclosure_flags
 from src.collectors.sector_collector import load as load_sectors
@@ -229,6 +231,9 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
 
     st.html(yearly_table_html(row))
     st.html(footer_html(result))
+    stamp = dataset_meta.oldest_date()
+    if stamp:
+        st.caption(f"재무·시세 데이터 기준일 {stamp} · 뉴스와 공시는 조회 시점 기준")
 
     try:
         st.download_button(
@@ -247,7 +252,11 @@ def main() -> None:
     df = get_data()
 
     st.title("리포트 셀프바")
-    st.caption("종목도, 관점도 골라 담으세요 · 코스피·코스닥 전 종목")
+    stamp = dataset_meta.oldest_date()
+    st.caption(
+        "종목도, 관점도 골라 담으세요 · 코스피·코스닥 전 종목"
+        + (f" · {stamp} 종가 기준" if stamp else "")
+    )
     st.caption(DISCLAIMER)
 
     with st.sidebar:
@@ -331,6 +340,19 @@ def main() -> None:
         cap_min, cap_max = st.session_state.cap_range
         st.caption(f"{cap_min:,}억원 ~ {cap_max:,}억원")
         keyword = st.text_input("종목명 검색", placeholder="예: 삼성")
+
+        st.divider()
+        age = dataset_meta.days_old()
+        line = dataset_meta.summary_line()
+        if age is not None and age >= 3:
+            st.warning(line)
+        else:
+            st.caption(line)
+        meta = dataset_meta.read()
+        if meta:
+            with st.expander("데이터별 갱신 시각"):
+                for name, info in meta.items():
+                    st.caption(f"{dataset_meta.LABELS.get(name, name)} · {info.get('갱신', '')}")
 
     view = df[df["시장구분"].isin(markets)]
     if group != "전체":
@@ -430,14 +452,17 @@ def main() -> None:
     if cached:
         render_report(cached, row, get_price_history(row["종목코드"]))
     else:
-        st.caption(f"오늘 신규 생성 {_usage_today()}/{DAILY_LIMIT}건 사용")
+        st.caption(
+            f"오늘 신규 생성 {_usage_today()}/{DAILY_LIMIT}건 사용 "
+            f"(남은 {remaining_today()}건, 이번 접속에서 최대 {SESSION_LIMIT}건)"
+        )
         if st.button(f"{perspective} 관점으로 리포트 생성", type="primary"):
             try:
                 with st.spinner("데이터를 모으고 리포트를 작성하는 중..."):
                     context = gather_context(row["종목코드"], perspective)
                     result = analyze(row, perspective, length, **context)
                 render_report(result, row, get_price_history(row["종목코드"]))
-            except DailyLimitReached as exc:
+            except (DailyLimitReached, SessionLimitReached) as exc:
                 st.warning(str(exc))
             except ApiKeyMissing as exc:
                 st.error("현재 AI 리포트 기능을 이용할 수 없습니다. 잠시 후 다시 시도해주세요.")
