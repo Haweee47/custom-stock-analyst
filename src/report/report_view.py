@@ -262,3 +262,37 @@ def footer_html(result: dict) -> str:
   <div style="font-size:11.5px"><b>이 리포트가 보지 못한 것</b><br>{report['데이터한계']}</div>
   <div class="rpt-foot">{result['면책']}</div>
 </div></div>"""
+
+
+def issues_html(issues: list[dict]) -> str:
+    """주요 이슈를 일자·구분과 함께 시간순으로 보여준다."""
+    if not issues:
+        return ""
+    rows = ""
+    for item in sorted(issues, key=lambda x: str(x.get("일자", "")), reverse=True):
+        kind = item.get("구분", "")
+        tone = ACCENT if kind == "공시" else MUTED
+        rows += f"""
+        <tr>
+          <td class="d">{item.get('일자', '')}</td>
+          <td><span class="k" style="border-color:{tone}; color:{tone}">{kind}</span></td>
+          <td>
+            <div class="t">{item.get('제목', '')}</div>
+            <div class="i">{item.get('인사이트', '')}</div>
+          </td>
+        </tr>"""
+    return f"""{CSS}
+<div class="rpt-box">
+  <h4>최근 주요 이슈</h4>
+  <style>
+    table.rpt-iss {{ width:100%; border-collapse:collapse; font-size:12px; }}
+    table.rpt-iss td {{ padding:8px 10px; border-bottom:1px solid {HAIR}; vertical-align:top; }}
+    table.rpt-iss tr:last-child td {{ border-bottom:none; }}
+    table.rpt-iss td.d {{ color:{MUTED}; white-space:nowrap; font-variant-numeric:tabular-nums; width:88px; }}
+    table.rpt-iss .k {{ display:inline-block; font-size:10px; padding:1px 6px;
+      border:1px solid; border-radius:2px; white-space:nowrap; }}
+    table.rpt-iss .t {{ font-weight:700; color:{INK}; margin-bottom:2px; }}
+    table.rpt-iss .i {{ color:{BODY}; font-size:11.5px; word-break:keep-all; }}
+  </style>
+  <table class="rpt-iss">{rows}</table>
+</div>"""

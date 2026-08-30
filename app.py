@@ -30,10 +30,12 @@ from src.collectors.news_collector import (
 )
 from src.report.report_pdf import filename as pdf_filename
 from src.report.report_pdf import render_pdf
+from src.report.chart import plotly_chart
 from src.report.report_view import (
     body_html,
     footer_html,
     header_html,
+    issues_html,
     metrics_html,
     won,
     yearly_table_html,
@@ -191,12 +193,29 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
     left, right = st.columns([1, 2.1], gap="medium")
     with left:
         st.html(metrics_html(row, perf, tech))
-        fig = price_chart(prices)
-        if fig:
-            st.caption("주가 추이 (1년)")
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        if result["관점"] != "기술적":
+            fig = price_chart(prices)
+            if fig:
+                st.caption("주가 추이 (1년)")
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     with right:
         st.html(body_html(result))
+
+    if result["관점"] == "기술적" and not prices.empty:
+        st.markdown("##### 지표 차트")
+        chart, events = plotly_chart(prices)
+        st.plotly_chart(chart, width="stretch", config={"displayModeBar": False})
+        if events:
+            st.caption(
+                "표시된 시점 — "
+                + " · ".join(
+                    f"{e['일자']:%y.%m.%d} {e['종류']}" for e in sorted(events, key=lambda x: x["일자"])
+                )
+            )
+
+    issues = result["리포트"].get("주요이슈") or []
+    if issues:
+        st.html(issues_html(issues))
 
     st.html(yearly_table_html(row))
     st.html(footer_html(result))

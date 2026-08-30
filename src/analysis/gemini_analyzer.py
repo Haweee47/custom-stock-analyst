@@ -143,10 +143,8 @@ def _news_block(news: list[dict]) -> str:
 def _disclosure_block(disclosures: list[dict]) -> str:
     if not disclosures:
         return "[최근 공시]\n- 최근 공시 없음"
-    lines = "\n".join(
-        f"- [{d.get('rcept_dt', '')}] {d.get('report_nm', '')}" for d in disclosures
-    )
-    return f"[최근 공시]\n{lines}"
+    lines = "\n".join(f"- [{d['일자']}] {d['제목']}" for d in disclosures)
+    return f"[최근 주요 공시 (중요도순, 최근 6개월)]\n{lines}"
 
 
 def build_prompt(
@@ -257,6 +255,8 @@ def gather_context(stock_code: str, perspective: str) -> dict:
         technical_summary,
     )
 
+    from src.api.disclosure import fetch_important
+
     needed = PERSPECTIVES[perspective]["데이터"]
     context: dict = {}
     if "기술" in needed:
@@ -264,6 +264,8 @@ def gather_context(stock_code: str, perspective: str) -> dict:
         context["tech"] = technical_summary(fetch_price_history(stock_code, pages=25))
     if "뉴스" in needed:
         context["news"] = fetch_news(stock_code)
+    if "공시" in needed:
+        context["disclosures"] = fetch_important(stock_code)
     return context
 
 
