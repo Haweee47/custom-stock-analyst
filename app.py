@@ -22,6 +22,8 @@ from src.analysis.gemini_analyzer import (
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES
 from src.analysis.screens import SCREENS, apply_screens, screen_counts
+from src.collectors.disclosure_batch import TIER_HELP, TIER_LABELS
+from src.collectors.disclosure_batch import load as load_disclosure_flags
 from src.collectors.sector_collector import load as load_sectors
 from src.collectors.news_collector import (
     fetch_price_history,
@@ -61,6 +63,14 @@ def get_data() -> pd.DataFrame:
         return df
     merged = df.merge(sectors, on="종목코드", how="left")
     merged[["업종_대분류", "업종_소분류"]] = merged[["업종_대분류", "업종_소분류"]].fillna("미분류")
+
+    flags = load_disclosure_flags()
+    if not flags.empty:
+        merged = merged.merge(flags, on="종목코드", how="left")
+    for column in ["공시성격", "해당공시", "공시일자"]:
+        if column not in merged.columns:
+            merged[column] = None
+    merged["공시성격"] = merged["공시성격"].fillna("공시 없음")
     return merged
 
 
@@ -255,6 +265,19 @@ def main() -> None:
             )
         sub = st.selectbox("업종 소분류", sub_options, disabled=(group == "전체"))
 
+        kinds = [k for k in TIER_LABELS.values() if (df["공시성격"] == k).any()]
+        kind_counts = df["공시성격"].value_counts()
+        disclosure_kinds = st.multiselect(
+            "최근 공시 (3개월)",
+            kinds,
+            format_func=lambda k: f"{k} ({kind_counts.get(k, 0):,})",
+            help=" / ".join(f"{k}: {v}" for k, v in TIER_HELP.items()),
+        )
+        hide_risky = st.checkbox(
+            "중대 공시 종목 제외",
+            help="상장폐지·관리종목 지정우려·자본잠식 등의 공시가 있는 종목을 목록에서 뺍니다.",
+        )
+
         counts = screen_counts(df)
         screens = st.multiselect(
             "재무 특성",
@@ -314,6 +337,10 @@ def main() -> None:
         view = view[view["업종_대분류"] == group]
         if sub != "전체":
             view = view[view["업종_소분류"] == sub]
+    if disclosure_kinds:
+        view = view[view["공시성격"].isin(disclosure_kinds)]
+    if hide_risky:
+        view = view[view["공시성격"] != "중대 공시"]
     if screens:
         view = apply_screens(view, screens)
     view = view[
@@ -334,12 +361,18 @@ def main() -> None:
 
     options = view.sort_values("시가총액", ascending=False)
     labels = {
-        f"{r['종목명']} ({r['종목코드']})": r["종목코드"] for _, r in options.iterrows()
+        f"{'⚠ ' if r['공시성격'] == '중대 공시' else ''}{r['종목명']} ({r['종목코드']})": r["종목코드"]
+        for _, r in options.iterrows()
     }
     picked = st.sidebar.selectbox("종목 선택", list(labels))
     row = df[df["종목코드"] == labels[picked]].iloc[0]
 
     st.subheader(f"{row['종목명']} · {row['시장구분']} · {row['종목코드']}")
+    if row.get("공시성격") == "중대 공시":
+        st.warning(
+            f"**최근 중대 공시가 있습니다** — {row.get('해당공시', '')} "
+            f"({row.get('공시일자', '')}). 내용을 직접 확인해보세요."
+        )
     stat_row(row)
 
     st.divider()
