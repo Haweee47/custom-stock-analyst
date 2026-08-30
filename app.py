@@ -227,6 +227,7 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
             file_name=pdf_filename(row, result),
             mime="application/pdf",
         )
+        st.caption("PDF에는 지표 차트가 포함되지 않습니다. 본문과 표만 담깁니다.")
     except Exception as exc:
         st.caption("PDF 저장을 준비하지 못했습니다.")
         print(f"[PDF 실패] {type(exc).__name__}: {exc}", file=sys.stderr)
