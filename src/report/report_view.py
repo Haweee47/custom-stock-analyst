@@ -13,90 +13,147 @@ import pandas as pd
 
 ACCENT = "#12386b"
 ACCENT_LINE = "#1a4d8f"
-ACCENT_SOFT = "#eef2f8"
-INK = "#111"
-BODY = "#2b2b2b"
+ACCENT_SOFT = "#f2f5fa"
+PAPER = "#ffffff"
+INK = "#14161a"
+BODY = "#33383f"
 MUTED = "#6e7480"
-RULE = "#d5d8dd"
-HAIR = "#edeff2"
+RULE = "#d7dae0"
+HAIR = "#ecedf1"
 UP = "#c0392b"
 DOWN = "#1f5fa8"
 
 CSS = f"""
 <style>
+/* 한 장의 지면처럼 보이는 것이 이 스타일의 목표다.
+
+   Streamlit은 st.html을 부를 때마다 별도 블록을 만든다. 조각마다 테두리를 두르면
+   리포트가 아니라 카드 대시보드처럼 보이므로, 조각에는 테두리를 두지 않고 흰 지면
+   위에 얇은 괘선으로만 구획을 나눈다. 배경색은 모든 면에 명시한다. 이용자가 다크
+   테마로 바꾸면 배경을 지정하지 않은 상자가 어두워지면서 검은 글자가 사라진다. */
+
 .rpt {{
-  font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
-  color: {BODY}; font-size: 12.5px; line-height: 1.62;
-  background: #fff; border: 1px solid {RULE}; padding: 0;
+  font-family: "Pretendard", "Malgun Gothic", "맑은 고딕",
+               "Apple SD Gothic Neo", system-ui, sans-serif;
+  color: {BODY}; font-size: 13px; line-height: 1.72;
+  background: {PAPER}; -webkit-font-smoothing: antialiased;
 }}
-.rpt-inner {{ padding: 16px 20px 18px; }}
+.rpt-inner {{ padding: 0 2px; }}
 .rpt-top {{ height: 3px; background: {ACCENT}; }}
 .rpt-band {{
   display: flex; justify-content: space-between; align-items: baseline;
-  border-bottom: 1px solid {RULE}; padding: 10px 20px 7px;
-  font-size: 10.5px; color: {MUTED}; letter-spacing: .06em; text-transform: uppercase;
+  flex-wrap: wrap; gap: 4px 12px;
+  border-bottom: 1px solid {HAIR}; padding: 9px 2px 7px;
+  font-size: 10.5px; color: {MUTED}; letter-spacing: .08em; text-transform: uppercase;
 }}
-.rpt-brand {{ font-weight: 800; color: {ACCENT}; letter-spacing: .12em; }}
+.rpt-brand {{ font-weight: 800; color: {ACCENT}; letter-spacing: .14em; }}
 
-.rpt-title {{ display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }}
-.rpt-name {{ font-size: 25px; font-weight: 800; color: {ACCENT}; margin: 0; letter-spacing: -.02em; }}
+.rpt-title {{
+  display: flex; justify-content: space-between; align-items: flex-end;
+  gap: 8px 20px; flex-wrap: wrap; padding-top: 14px;
+}}
+.rpt-name {{
+  font-size: 28px; font-weight: 800; color: {ACCENT}; margin: 0;
+  letter-spacing: -.03em; line-height: 1.15;
+}}
 .rpt-name small {{ font-size: 15px; font-weight: 600; color: {MUTED}; letter-spacing: 0; }}
-.rpt-meta {{ font-size: 10.5px; color: {MUTED}; text-align: right; line-height: 1.7; white-space: nowrap; }}
+.rpt-meta {{
+  font-size: 10.5px; color: {MUTED}; text-align: right; line-height: 1.75;
+  white-space: nowrap;
+}}
 .rpt-headline {{
-  font-size: 15.5px; font-weight: 700; color: {INK}; margin: 7px 0 0;
-  padding-bottom: 11px; border-bottom: 2px solid {ACCENT}; letter-spacing: -.01em;
+  font-size: 17px; font-weight: 700; color: {INK}; margin: 10px 0 0;
+  padding-bottom: 13px; border-bottom: 2px solid {ACCENT};
+  letter-spacing: -.02em; line-height: 1.5; word-break: keep-all;
 }}
 
-.rpt-box {{ border: 1px solid {RULE}; margin-bottom: 10px; }}
-.rpt-box h4 {{
-  margin: 0; padding: 5px 10px; font-size: 10.5px; font-weight: 700;
-  background: {ACCENT_SOFT}; color: {ACCENT}; border-bottom: 1px solid {RULE};
-  letter-spacing: .06em;
+/* 수치 상자 - 표는 담아 두는 편이 읽기 쉬우므로 여기만 테두리를 남긴다 */
+.rpt-box {{
+  border: 1px solid {RULE}; background: {PAPER};
+  margin-bottom: 10px; overflow: hidden;
 }}
-table.rpt-t {{ width: 100%; border-collapse: collapse; font-size: 11.5px; }}
-table.rpt-t td {{ padding: 4px 10px; border-bottom: 1px solid {HAIR}; }}
-table.rpt-t td:first-child {{ color: {MUTED}; }}
-table.rpt-t td:last-child {{ text-align: right; font-weight: 700; color: {INK};
-  font-variant-numeric: tabular-nums; }}
+.rpt-box h4 {{
+  margin: 0; padding: 6px 11px; font-size: 10.5px; font-weight: 700;
+  background: {ACCENT_SOFT}; color: {ACCENT}; border-bottom: 1px solid {RULE};
+  letter-spacing: .08em;
+}}
+.rpt-scroll {{ overflow-x: auto; }}
+
+table.rpt-t {{ width: 100%; border-collapse: collapse; font-size: 12px; background: {PAPER}; }}
+table.rpt-t td {{ padding: 5px 11px; border-bottom: 1px solid {HAIR}; }}
+table.rpt-t td:first-child {{ color: {MUTED}; white-space: nowrap; }}
+table.rpt-t td:last-child {{
+  text-align: right; font-weight: 700; color: {INK};
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}}
 table.rpt-t tr:last-child td {{ border-bottom: none; }}
 
-table.rpt-yr {{ width: 100%; border-collapse: collapse; font-size: 11.5px; }}
+table.rpt-yr {{ width: 100%; border-collapse: collapse; font-size: 12px; background: {PAPER}; }}
 table.rpt-yr th {{
   background: {ACCENT_SOFT}; color: {ACCENT}; font-size: 10.5px; font-weight: 700;
-  padding: 5px 8px; border-bottom: 1px solid {RULE}; text-align: right;
+  padding: 6px 9px; border-bottom: 1px solid {RULE}; text-align: right; white-space: nowrap;
 }}
 table.rpt-yr th:first-child {{ text-align: left; }}
-table.rpt-yr td {{ padding: 4px 8px; border-bottom: 1px solid {HAIR}; text-align: right;
-  font-variant-numeric: tabular-nums; color: {INK}; font-weight: 600; }}
+table.rpt-yr td {{
+  padding: 5px 9px; border-bottom: 1px solid {HAIR}; text-align: right;
+  font-variant-numeric: tabular-nums; color: {INK}; font-weight: 600; white-space: nowrap;
+}}
 table.rpt-yr td:first-child {{ text-align: left; color: {MUTED}; font-weight: 400; }}
 table.rpt-yr tr:last-child td {{ border-bottom: none; }}
 
 .up {{ color: {UP}; }} .down {{ color: {DOWN}; }}
 
+/* 핵심포인트 - 리포트에서 가장 먼저 읽히는 자리라 지면과 톤을 다르게 준다 */
 .rpt-points {{
-  margin: 0 0 15px; padding: 12px 16px 12px 18px; background: #fafbfc;
+  margin: 2px 0 20px; padding: 14px 18px 14px 20px; background: {ACCENT_SOFT};
   border-left: 3px solid {ACCENT}; list-style: none;
 }}
-.rpt-points li {{ margin: 0 0 6px; font-size: 12.5px; padding-left: 11px; position: relative; }}
-.rpt-points li:before {{ content: "·"; position: absolute; left: 0; color: {ACCENT}; font-weight: 700; }}
+.rpt-points li {{
+  margin: 0 0 8px; font-size: 13px; line-height: 1.65; padding-left: 13px;
+  position: relative; word-break: keep-all; color: {INK};
+}}
+.rpt-points li:before {{
+  content: ""; position: absolute; left: 0; top: .62em;
+  width: 4px; height: 4px; border-radius: 50%; background: {ACCENT};
+}}
 .rpt-points li:last-child {{ margin-bottom: 0; }}
 
-.rpt-sec {{ margin-bottom: 15px; }}
+.rpt-sec {{ margin-bottom: 19px; }}
 .rpt-sec h3 {{
-  font-size: 13.5px; font-weight: 700; color: {ACCENT}; margin: 0 0 6px;
-  padding-left: 9px; border-left: 3px solid {ACCENT_LINE}; letter-spacing: -.01em;
+  font-size: 14.5px; font-weight: 700; color: {ACCENT}; margin: 0 0 7px;
+  padding-left: 10px; border-left: 3px solid {ACCENT_LINE};
+  letter-spacing: -.02em; line-height: 1.45; word-break: keep-all;
 }}
-.rpt-sec p {{ margin: 0; font-size: 12.5px; text-align: justify; word-break: keep-all; }}
+.rpt-sec p {{ margin: 0; font-size: 13px; line-height: 1.78; word-break: keep-all; }}
 
-.rpt-half {{ border: 1px solid {RULE}; border-top: 2px solid {ACCENT}; padding: 11px 14px; }}
-.rpt-half h4 {{ margin: 0 0 8px; font-size: 11.5px; font-weight: 700; color: {ACCENT};
-  letter-spacing: .02em; }}
-.rpt-half ul {{ margin: 0; padding-left: 16px; }}
-.rpt-half li {{ font-size: 11.8px; margin-bottom: 5px; word-break: keep-all; }}
+/* 체크포인트와 리스크 - 좁은 화면에서는 두 칸이 눌리므로 접어서 쌓는다 */
+.rpt-cols {{ display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }}
+.rpt-half {{
+  flex: 1 1 260px; min-width: 0; background: {PAPER};
+  border: 1px solid {RULE}; border-top: 2px solid {ACCENT}; padding: 12px 15px;
+}}
+.rpt-half h4 {{
+  margin: 0 0 9px; font-size: 11px; font-weight: 700; color: {ACCENT};
+  letter-spacing: .06em;
+}}
+.rpt-half ul {{ margin: 0; padding-left: 17px; }}
+.rpt-half li {{ font-size: 12.3px; line-height: 1.65; margin-bottom: 6px; word-break: keep-all; }}
+.rpt-half li:last-child {{ margin-bottom: 0; }}
 
+.rpt-note {{
+  background: {PAPER}; border: 1px solid {RULE}; padding: 13px 16px;
+}}
+.rpt-note b {{ color: {ACCENT}; font-size: 11px; letter-spacing: .06em; }}
+.rpt-note div.body {{ font-size: 12.3px; line-height: 1.7; margin-top: 5px; word-break: keep-all; }}
 .rpt-foot {{
-  margin-top: 12px; padding-top: 9px; border-top: 1px solid {RULE};
-  font-size: 10px; color: {MUTED}; line-height: 1.55;
+  margin-top: 11px; padding-top: 10px; border-top: 1px solid {HAIR};
+  font-size: 10.5px; color: {MUTED}; line-height: 1.6;
+}}
+
+@media (max-width: 640px) {{
+  .rpt-name {{ font-size: 23px; }}
+  .rpt-headline {{ font-size: 15px; }}
+  .rpt-meta {{ text-align: left; }}
 }}
 </style>
 """
@@ -141,11 +198,15 @@ def _rows(pairs: list[tuple[str, str]]) -> str:
     return f'<table class="rpt-t">{body}</table>'
 
 
+def styles_html() -> str:
+    """리포트 스타일. 한 번만 심으면 되므로 렌더 시작에서 한 번 호출한다."""
+    return CSS
+
+
 def header_html(row: pd.Series, result: dict) -> str:
     report = result["리포트"]
     date = result["생성시각"][:10].replace("-", ".")
-    return f"""{CSS}
-<div class="rpt">
+    return f"""<div class="rpt">
   <div class="rpt-top"></div>
   <div class="rpt-band">
     <span class="rpt-brand">AI Company Report</span>
@@ -194,13 +255,12 @@ def yearly_table_html(row: pd.Series) -> str:
             cells += f"<td>{f'{top / bottom * 100:.1f}%' if ok else '—'}</td>"
         margins += f"<tr><td>{label}</td>{cells}<td>—</td></tr>"
 
-    return f"""{CSS}
-<div class="rpt-box">
+    return f"""<div class="rpt-box">
   <h4>요약 실적 (억원)</h4>
-  <table class="rpt-yr">
+  <div class="rpt-scroll"><table class="rpt-yr">
     <tr><th>구분</th>{head}</tr>
     {body}{margins}
-  </table>
+  </table></div>
 </div>"""
 
 
@@ -224,7 +284,7 @@ def metrics_html(row: pd.Series, perf: dict | None, tech: dict | None) -> str:
         ("영업이익률", _num(row.get("영업이익률"), "%", digits=2)),
     ]
 
-    blocks = [CSS, '<div class="rpt-box"><h4>주가 정보</h4>' + _rows(price) + "</div>"]
+    blocks = ['<div class="rpt-box"><h4>주가 정보</h4>' + _rows(price) + "</div>"]
     if perf:
         blocks.append(
             '<div class="rpt-box"><h4>주가 등락률</h4>'
@@ -242,8 +302,7 @@ def body_html(result: dict) -> str:
         f'<div class="rpt-sec"><h3>{s["소제목"]}</h3><p>{s["본문"]}</p></div>'
         for s in report["섹션"]
     )
-    return f"""{CSS}
-<div class="rpt"><div class="rpt-inner">
+    return f"""<div class="rpt"><div class="rpt-inner">
   <ul class="rpt-points">{points}</ul>
   {sections}
 </div></div>"""
@@ -253,15 +312,17 @@ def footer_html(result: dict) -> str:
     report = result["리포트"]
     checks = "".join(f"<li>{c}</li>" for c in report["체크포인트"])
     risks = "".join(f"<li>{r}</li>" for r in report["리스크요인"])
-    return f"""{CSS}
-<div style="display:flex; gap:12px; margin-bottom:12px">
-  <div class="rpt-half" style="flex:1"><h4>투자자가 확인해야 할 점</h4><ul>{checks}</ul></div>
-  <div class="rpt-half" style="flex:1"><h4>리스크 요인</h4><ul>{risks}</ul></div>
-</div>
-<div class="rpt"><div class="rpt-inner" style="padding:12px 16px">
-  <div style="font-size:11.5px"><b>이 리포트가 보지 못한 것</b><br>{report['데이터한계']}</div>
-  <div class="rpt-foot">{result['면책']}</div>
-</div></div>"""
+    return f"""<div class="rpt">
+  <div class="rpt-cols">
+    <div class="rpt-half"><h4>투자자가 확인해야 할 점</h4><ul>{checks}</ul></div>
+    <div class="rpt-half"><h4>리스크 요인</h4><ul>{risks}</ul></div>
+  </div>
+  <div class="rpt-note">
+    <b>이 리포트가 보지 못한 것</b>
+    <div class="body">{report['데이터한계']}</div>
+    <div class="rpt-foot">{result['면책']}</div>
+  </div>
+</div>"""
 
 
 def issues_html(issues: list[dict]) -> str:
@@ -281,11 +342,10 @@ def issues_html(issues: list[dict]) -> str:
             <div class="i">{item.get('인사이트', '')}</div>
           </td>
         </tr>"""
-    return f"""{CSS}
-<div class="rpt-box">
+    return f"""<div class="rpt-box">
   <h4>최근 주요 이슈</h4>
   <style>
-    table.rpt-iss {{ width:100%; border-collapse:collapse; font-size:12px; }}
+    table.rpt-iss {{ width:100%; border-collapse:collapse; font-size:12px; background:{PAPER}; }}
     table.rpt-iss td {{ padding:8px 10px; border-bottom:1px solid {HAIR}; vertical-align:top; }}
     table.rpt-iss tr:last-child td {{ border-bottom:none; }}
     table.rpt-iss td.d {{ color:{MUTED}; white-space:nowrap; font-variant-numeric:tabular-nums; width:88px; }}
@@ -294,5 +354,5 @@ def issues_html(issues: list[dict]) -> str:
     table.rpt-iss .t {{ font-weight:700; color:{INK}; margin-bottom:2px; }}
     table.rpt-iss .i {{ color:{BODY}; font-size:11.5px; word-break:keep-all; }}
   </style>
-  <table class="rpt-iss">{rows}</table>
+  <div class="rpt-scroll"><table class="rpt-iss">{rows}</table></div>
 </div>"""

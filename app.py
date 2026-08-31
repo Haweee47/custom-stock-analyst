@@ -41,6 +41,7 @@ from src.report.report_view import (
     header_html,
     issues_html,
     metrics_html,
+    styles_html,
     won,
     yearly_table_html,
 )
@@ -200,6 +201,8 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
     perf = price_performance(prices) if not prices.empty else None
     tech = technical_summary(prices) if not prices.empty else None
 
+    # 스타일은 조각마다 넣지 않고 렌더 시작에서 한 번만 심는다
+    st.html(styles_html())
     st.html(header_html(row, result))
 
     left, right = st.columns([1, 2.1], gap="medium")
@@ -225,12 +228,12 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
                 )
             )
 
+    # 이어지는 세 블록은 한 번에 심는다. st.html을 나눠 부르면 그 사이마다
+    # Streamlit이 여백을 넣어 한 장의 리포트가 아니라 카드 더미처럼 보인다.
     issues = result["리포트"].get("주요이슈") or []
-    if issues:
-        st.html(issues_html(issues))
-
-    st.html(yearly_table_html(row))
-    st.html(footer_html(result))
+    st.html(
+        issues_html(issues) + yearly_table_html(row) + footer_html(result)
+    )
     stamp = dataset_meta.oldest_date()
     if stamp:
         st.caption(f"재무·시세 데이터 기준일 {stamp} · 뉴스와 공시는 조회 시점 기준")
