@@ -289,8 +289,13 @@ def analyze(
     disclosures: list[dict] | None = None,
     universe: pd.DataFrame | None = None,
     force: bool = False,
+    batch: bool = False,
 ) -> dict:
-    """한 종목을 분석한다. 캐시가 있으면 API를 호출하지 않는다."""
+    """한 종목을 분석한다. 캐시가 있으면 API를 호출하지 않는다.
+
+    batch=True는 운영자가 미리 채우는 배치용으로, 세션 상한을 적용하지 않는다.
+    일일 상한은 비용의 상한선이므로 배치에도 그대로 걸린다.
+    """
     stock_code = row["종목코드"]
 
     if not force:
@@ -298,7 +303,7 @@ def analyze(
         if cached:
             return cached
 
-    usage_limit.check()
+    usage_limit.check(session=not batch)
 
     response = _client().models.generate_content(
         model=MODEL,
@@ -327,7 +332,7 @@ def analyze(
     _cache_path(stock_code, perspective, length).write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    usage_limit.record()
+    usage_limit.record(session=not batch)
     return result
 
 

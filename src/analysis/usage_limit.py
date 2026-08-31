@@ -71,22 +71,31 @@ def session_used() -> int:
     return state.get("gemini_session_count", 0)
 
 
-def check() -> None:
-    """생성 전에 호출한다. 한도를 넘었으면 예외를 던진다."""
+def check(session: bool = True) -> None:
+    """생성 전에 호출한다. 한도를 넘었으면 예외를 던진다.
+
+    session=False는 운영자가 돌리는 배치용이다. 세션 상한은 '방문자 한 명이 한 번에
+    너무 많이 태우는 것'을 막는 장치라 배치에는 해당하지 않는다. 반면 일일 상한은
+    실제 비용의 상한선이므로 배치에도 그대로 건다.
+    """
     if used_today() >= DAILY_LIMIT:
         raise DailyLimitReached(
             f"오늘 새로 만들 수 있는 리포트({DAILY_LIMIT}건)를 모두 사용했습니다. "
             "이미 만들어진 리포트는 계속 보실 수 있고, 내일 다시 생성됩니다."
         )
-    if session_used() >= SESSION_LIMIT:
+    if session and session_used() >= SESSION_LIMIT:
         raise SessionLimitReached(
             f"한 번에 만들 수 있는 리포트는 {SESSION_LIMIT}건까지입니다. "
             "잠시 후 페이지를 새로 열면 다시 만들 수 있습니다."
         )
 
 
-def record() -> None:
-    """생성에 성공한 뒤 호출한다."""
+def record(session: bool = True) -> None:
+    """생성에 성공한 뒤 호출한다.
+
+    session=False면 세션 카운터를 건드리지 않는다. 배치에는 세션이라는 개념이
+    없을뿐더러, streamlit 밖에서 session_state에 접근하면 경고가 줄줄이 찍힌다.
+    """
     today = _today()
     _process_counts[today] = _process_counts.get(today, 0) + 1
 
@@ -96,13 +105,18 @@ def record() -> None:
             log = json.loads(USAGE_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             log = {}
-    log[today] = max(log.get(today, 0), _process_counts[today])
+    # 파일 카운터는 그 자체로 누적시킨다. 프로세스 카운터와 max를 취하면, 새 프로세스가
+    # 0에서 시작하므로 앞선 프로세스가 쌓아 둔 사용량이 지워진다. (배치를 한 번 돌리면
+    # 그날 방문자들이 만든 건수가 통째로 사라졌다.)
+    log[today] = log.get(today, 0) + 1
     try:
         USAGE_PATH.parent.mkdir(parents=True, exist_ok=True)
         USAGE_PATH.write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
         pass  # 배포 환경에서 쓰기가 막혀도 프로세스 카운터는 살아 있다
 
+    if not session:
+        return
     state = _session_state()
     if state is not None:
         state["gemini_session_count"] = session_used() + 1

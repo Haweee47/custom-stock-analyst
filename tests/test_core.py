@@ -304,3 +304,49 @@ class TestPromptContents:
 
     def test_자기점검_지시가_붙는다(self, row):
         assert "조와 억을 바꿔 쓰지" in build_prompt(row, "펀더멘탈", "압축형")
+
+
+class TestUsageLimit:
+    """일일 상한은 비용의 상한선이므로 조용히 새면 안 된다."""
+
+    @pytest.fixture
+    def limiter(self, tmp_path, monkeypatch):
+        import importlib
+
+        from src.analysis import usage_limit as module
+
+        importlib.reload(module)
+        monkeypatch.setattr(module, "USAGE_PATH", tmp_path / "usage.json")
+        return module
+
+    def test_파일_카운터는_프로세스를_넘어_누적된다(self, limiter):
+        # 방문자가 만든 7건이 파일에 있는 상태에서 배치가 새 프로세스로 30건을 만들면
+        # 37건이 되어야 한다. 예전에는 max()를 쓰는 바람에 30건으로 덮여 7건이 사라졌다.
+        import json
+
+        limiter.USAGE_PATH.write_text(
+            json.dumps({limiter._today(): 7}), encoding="utf-8"
+        )
+        for _ in range(30):
+            limiter.record(session=False)
+
+        stored = json.loads(limiter.USAGE_PATH.read_text(encoding="utf-8"))
+        assert stored[limiter._today()] == 37
+        assert limiter.used_today() == 37
+        assert limiter.remaining_today() == limiter.DAILY_LIMIT - 37
+
+    def test_배치는_세션_상한에_걸리지_않는다(self, limiter, monkeypatch):
+        # 세션 카운터가 이미 상한을 넘겨도 배치는 통과해야 한다
+        monkeypatch.setattr(limiter, "session_used", lambda: limiter.SESSION_LIMIT + 5)
+        limiter.check(session=False)  # 예외가 나지 않으면 통과
+        with pytest.raises(limiter.SessionLimitReached):
+            limiter.check(session=True)
+
+    def test_일일_상한은_배치에도_걸린다(self, limiter, monkeypatch):
+        monkeypatch.setattr(limiter, "used_today", lambda: limiter.DAILY_LIMIT)
+        with pytest.raises(limiter.DailyLimitReached):
+            limiter.check(session=False)
+
+    def test_배치는_세션_카운터를_건드리지_않는다(self, limiter):
+        limiter.record(session=False)
+        assert limiter.session_used() == 0
