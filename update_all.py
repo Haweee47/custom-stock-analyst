@@ -34,12 +34,18 @@ def _run(label: str, function) -> tuple[bool, str]:
 
 
 def update_prices() -> str:
+    from src.collectors.financial_collector import refresh_prices
     from src.collectors.stock_collector import collect_market_snapshot, save_snapshot
 
     snapshot = collect_market_snapshot()
     save_snapshot(snapshot, datetime.now().strftime("%Y%m%d"))
     counts = snapshot["종목구분"].value_counts()
-    return f"{len(snapshot):,}개 종목 (보통주 {counts.get('보통주', 0):,})"
+
+    # 스냅샷은 data/raw에 쌓이는데 화면이 읽는 표는 data/processed에 있다.
+    # 여기서 시세 열만 옮겨 담아야 --quick 갱신이 실제로 화면에 반영된다.
+    refreshed = refresh_prices(datetime.now().year - 1)
+    note = f"{len(snapshot):,}개 종목 (보통주 {counts.get('보통주', 0):,})"
+    return f"{note}, 리포트 표 시세 반영 {refreshed:,}개" if refreshed else note
 
 
 def update_financials() -> str:

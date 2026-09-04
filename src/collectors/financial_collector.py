@@ -120,6 +120,51 @@ def save(df: pd.DataFrame, year: int) -> Path:
     return out
 
 
+# 네이버 스냅샷에서 오는 값들. 나머지 열은 DART 재무라 분기마다만 바뀐다.
+SNAPSHOT_COLUMNS = [
+    "종목명",
+    "시장구분",
+    "종목구분",
+    "현재가",
+    "등락률",
+    "시가총액",
+    "상장주식수",
+    "거래량",
+    "외국인비율",
+    "PER",
+    "ROE",
+]
+
+
+def refresh_prices(year: int) -> int:
+    """시세만 최신 스냅샷으로 덮어쓴다.
+
+    주가는 매일 바뀌지만 재무는 분기마다 바뀐다. 그런데 화면이 읽는
+    financials_<year>.csv에는 둘이 함께 들어 있어서, 지금까지는 재무를 다시
+    받아야만(=DART 2,655회 조회) 주가가 갱신됐다. 매일 돌릴 수 없는 무게였다.
+
+    여기서는 DART를 건드리지 않고 스냅샷의 시세 열만 갈아 끼운다.
+    새로 상장된 종목은 들어오지 않으므로, 종목 목록 자체는 전체 갱신 때 맞춘다.
+    """
+    path = PROCESSED_DIR / f"financials_{year}.csv"
+    if not path.exists():
+        return 0
+
+    financials = pd.read_csv(path, dtype={"종목코드": str})
+    snapshot = pd.read_csv(latest_snapshot(), dtype={"종목코드": str})
+
+    columns = [c for c in SNAPSHOT_COLUMNS if c in snapshot.columns and c in financials.columns]
+    if not columns:
+        return 0
+
+    order = list(financials.columns)
+    fresh = snapshot[["종목코드", *columns]]
+    updated = financials.drop(columns=columns).merge(fresh, on="종목코드", how="left")
+
+    save(updated[order], year)
+    return int(updated["현재가"].notna().sum()) if "현재가" in updated else len(updated)
+
+
 if __name__ == "__main__":
     if sys.stdout.encoding.lower() != "utf-8":
         sys.stdout.reconfigure(encoding="utf-8")

@@ -350,3 +350,80 @@ class TestUsageLimit:
     def test_배치는_세션_카운터를_건드리지_않는다(self, limiter):
         limiter.record(session=False)
         assert limiter.session_used() == 0
+
+
+class TestPriceRefresh:
+    """시세는 매일, 재무는 분기마다 바뀐다. 매일 갱신이 재무를 건드리면 안 된다."""
+
+    @pytest.fixture
+    def collector(self, tmp_path, monkeypatch):
+        from src.collectors import financial_collector as module
+
+        raw, processed = tmp_path / "raw", tmp_path / "processed"
+        raw.mkdir()
+        processed.mkdir()
+        monkeypatch.setattr(module, "RAW_DIR", raw)
+        monkeypatch.setattr(module, "PROCESSED_DIR", processed)
+
+        pd.DataFrame(
+            {
+                "종목코드": ["005930", "000660"],
+                "종목명": ["삼성전자", "SK하이닉스"],
+                "시장구분": ["KOSPI"] * 2,
+                "종목구분": ["보통주"] * 2,
+                "현재가": [50000, 100000],
+                "시가총액": [1e14, 5e13],
+                "PER": [10.0, 8.0],
+                "매출액": [3e14, 5e13],
+                "부채비율": [30.0, 40.0],
+                "기준연도": [2025, 2025],
+            }
+        ).to_csv(processed / "financials_2025.csv", index=False, encoding="utf-8-sig")
+
+        # 다음 날 스냅샷: 주가가 올랐고 시총·PER도 따라 움직였다
+        pd.DataFrame(
+            {
+                "종목코드": ["005930", "000660"],
+                "종목명": ["삼성전자", "SK하이닉스"],
+                "시장구분": ["KOSPI"] * 2,
+                "종목구분": ["보통주"] * 2,
+                "현재가": [55000, 110000],
+                "시가총액": [1.1e14, 5.5e13],
+                "PER": [11.0, 8.8],
+            }
+        ).to_csv(raw / "stock_snapshot_20260901.csv", index=False, encoding="utf-8-sig")
+        return module, processed / "financials_2025.csv"
+
+    def test_시세는_갱신된다(self, collector):
+        module, path = collector
+        assert module.refresh_prices(2025) == 2
+
+        after = pd.read_csv(path, dtype={"종목코드": str})
+        samsung = after[after["종목코드"] == "005930"].iloc[0]
+        assert samsung["현재가"] == 55000
+        assert samsung["PER"] == 11.0
+
+    def test_재무는_건드리지_않는다(self, collector):
+        module, path = collector
+        module.refresh_prices(2025)
+
+        after = pd.read_csv(path, dtype={"종목코드": str})
+        samsung = after[after["종목코드"] == "005930"].iloc[0]
+        assert samsung["매출액"] == 3e14
+        assert samsung["부채비율"] == 30.0
+        assert samsung["기준연도"] == 2025
+
+    def test_열_순서와_종목코드가_보존된다(self, collector):
+        module, path = collector
+        before = pd.read_csv(path, dtype={"종목코드": str})
+        module.refresh_prices(2025)
+        after = pd.read_csv(path, dtype={"종목코드": str})
+
+        assert list(before.columns) == list(after.columns)
+        # 앞자리 0이 잘리면 종목 매칭이 통째로 깨진다
+        assert (after["종목코드"].str.len() == 6).all()
+
+    def test_재무표가_없으면_조용히_넘어간다(self, collector):
+        module, path = collector
+        path.unlink()
+        assert module.refresh_prices(2025) == 0

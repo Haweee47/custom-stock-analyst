@@ -1,0 +1,92 @@
+name: 일일 데이터 갱신
+
+# 수집은 무료(네이버 스크래이핑 + DART)라 매일 돌려도 비용이 0이다.
+# 갱신한 데이터를 커밋해야 Streamlit Cloud가 다시 배포하면서 반영한다.
+#
+# 장 마감(15:30 KST) 이후 공시가 어느 정도 올라온 시간을 노려 18:30 KST에 돈다.
+# GitHub Actions는 UTC로 동작하므로 09:30 UTC로 적는다.
+
+on:
+  schedule:
+    - cron: "30 9 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "재무·업종까지 전체 갱신 (느림, 보통은 불필요)"
+        type: boolean
+        default: false
+      warmup_top:
+        description: "캐시를 미리 채울 시총 상위 종목 수 (0이면 건너뜀)"
+        type: string
+        default: "30"
+
+# 앞 회차가 아직 돌고 있으면 겹쳐 돌지 않는다. 같은 파일을 두 번 커밋하게 된다.
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PYTHONIOENCODING: utf-8
+      DART_API_KEY: ${{ secrets.DART_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 라이브러리 설치
+        run: pip install -r requirements.txt
+
+      - name: 데이터 갱신
+        id: collect
+        # 일부 단계가 실패해도 성공한 만큼은 커밋한다. 시세만 갱신돼도
+        # 아무것도 갱신 안 된 것보다 낫다. 실패 여부는 마지막에 반영한다.
+        continue-on-error: true
+        run: |
+          if [ "${{ inputs.full }}" = "true" ]; then
+            python update_all.py
+          else
+            python update_all.py --quick
+          fi
+
+      - name: 리포트 캐시 워밍
+        # 캐시가 7일 뒤 만료되므로 매일 돌려도 하루 4~5건만 새로 만든다.
+        # 키가 없으면 조용히 건너뛴다. 수집만으로도 커밋할 값어치가 있다.
+        if: env.GEMINI_API_KEY != '' && inputs.warmup_top != '0'
+        continue-on-error: true
+        run: python warmup.py --top "${{ inputs.warmup_top || '30' }}"
+
+      - name: 변경분 커밋
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed
+
+          if git diff --cached --quiet; then
+            echo "변경된 데이터가 없습니다. 커밋을 건너뜁니다."
+            exit 0
+          fi
+
+          git commit -m "chore: 데이터 자동 갱신 ($(date -u '+%Y-%m-%d'))"
+          # 사람이 그사이 푸시했을 수 있으므로 리베이스 후 올린다
+          git pull --rebase --autostash origin main
+          git push origin HEAD:main
+          echo "푸시 완료"
+
+      - name: 수집 실패 여부 반영
+        if: steps.collect.outcome == 'failure'
+        run: |
+          echo "::error::데이터 갱신 중 실패한 단계가 있습니다. 위 로그의 '요약'을 확인하세요."
+          exit 1

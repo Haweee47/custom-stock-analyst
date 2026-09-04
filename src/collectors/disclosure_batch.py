@@ -48,21 +48,39 @@ TIER_HELP = {
 }
 
 
+RETRIES = 3
+BACKOFF = 3
+
+
 def _fetch_page(market: str, begin: str, end: str, page: int) -> dict:
-    response = requests.get(
-        LIST_URL,
-        params={
-            "crtfc_key": os.getenv("DART_API_KEY"),
-            "bgn_de": begin,
-            "end_de": end,
-            "corp_cls": market,
-            "page_no": page,
-            "page_count": 100,
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
+    """DART 한 페이지를 받는다. 일시적인 네트워크 오류는 물러섰다가 다시 시도한다.
+
+    수백 페이지를 넘기다 보면 중간에 한 번씩 연결이 끊긴다. 사람이 보고 있으면
+    다시 돌리면 그만이지만, 자동 실행에서는 그 한 번에 그날 공시 갱신이 통째로
+    날아간다. 그래서 페이지 단위로 재시도한다.
+    """
+    params = {
+        "crtfc_key": os.getenv("DART_API_KEY"),
+        "bgn_de": begin,
+        "end_de": end,
+        "corp_cls": market,
+        "page_no": page,
+        "page_count": 100,
+    }
+
+    for attempt in range(1, RETRIES + 1):
+        try:
+            response = requests.get(LIST_URL, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as exc:
+            if attempt == RETRIES:
+                raise
+            wait = BACKOFF * attempt
+            # 키가 URL에 실려 있어 예외 문자열에 그대로 나온다. 종류만 남긴다.
+            print(f"  [재시도 {attempt}/{RETRIES - 1}] {type(exc).__name__} — {wait}초 후")
+            time.sleep(wait)
+    raise RuntimeError("도달할 수 없는 경로")
 
 
 def collect(days: int = SEARCH_DAYS) -> pd.DataFrame:
