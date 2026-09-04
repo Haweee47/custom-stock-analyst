@@ -32,6 +32,7 @@ from src.analysis.gemini_analyzer import (  # noqa: E402
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES  # noqa: E402
 from src.analysis.usage_limit import DailyLimitReached, remaining_today  # noqa: E402
+from src.collectors import markets  # noqa: E402
 
 # 실측 단가(gemini-3.1-flash-lite). 백만 토큰당 달러, 환율 1,400원 가정.
 INPUT_COST = 0.25
@@ -48,14 +49,16 @@ def cost_of(tokens: dict) -> float:
     ) * EXCHANGE
 
 
-def targets(top: int, view: str, size: str):
+def targets(top: int, view: str, size: str, country: str):
     """시가총액 상위 종목 중 아직 캐시가 없는 것만 고른다."""
     universe = load_universe()
-    ranked = (
-        universe.dropna(subset=["시가총액"])
-        .sort_values("시가총액", ascending=False)
-        .head(top)
-    )
+    pool = universe[universe["국가"] == country] if "국가" in universe.columns else universe
+    if pool.empty:
+        raise SystemExit(f"{country} 데이터가 없습니다. 먼저 수집을 돌리세요.")
+
+    # 통화가 섞이므로 순위는 원화 환산 기준으로 매긴다
+    key = "시가총액_원화" if "시가총액_원화" in pool.columns else "시가총액"
+    ranked = pool.dropna(subset=[key]).sort_values(key, ascending=False).head(top)
 
     todo, cached = [], 0
     for _, row in ranked.iterrows():
@@ -76,19 +79,29 @@ def main() -> int:
     parser.add_argument(
         "--size", default=next(iter(LENGTHS)), choices=list(LENGTHS), help="분량"
     )
+    parser.add_argument(
+        "--country", default=markets.KOREA, choices=list(markets.PERSPECTIVES),
+        help="어느 시장을 채울지 (기본 국내주식)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="비용만 계산하고 끝낸다")
     args = parser.parse_args()
 
-    print(f"캐시 워밍 — 시총 상위 {args.top}개 · {args.view} · {args.size}")
+    if args.view not in markets.available_perspectives(args.country):
+        raise SystemExit(
+            f"{args.country}에서는 '{args.view}' 관점을 쓸 수 없습니다. "
+            f"가능한 관점: {', '.join(markets.available_perspectives(args.country))}"
+        )
 
-    universe, todo, cached = targets(args.top, args.view, args.size)
+    print(f"캐시 워밍 — {args.country} 시총 상위 {args.top}개 · {args.view} · {args.size}")
+
+    universe, todo, cached = targets(args.top, args.view, args.size, args.country)
     print(f"이미 있음 {cached}건 / 만들 것 {len(todo)}건")
 
     if not todo:
         print("\n모두 채워져 있습니다. 할 일이 없습니다.")
         return 0
 
-    left = remaining_today()
+    left = remaining_today(args.size)
     if len(todo) > left:
         print(f"오늘 남은 생성 가능 건수가 {left}건이라 그만큼만 만듭니다.")
         todo = todo[:left]
@@ -105,7 +118,7 @@ def main() -> int:
         label = f"{row['종목명']} ({row['종목코드']})"
         print(f"[{index}/{len(todo)}] {label} ... ", end="", flush=True)
         try:
-            context = gather_context(row["종목코드"], args.view)
+            context = gather_context(row, args.view)
             # universe는 gather_context가 이미 넣어 주지만, 관점에 따라 빠질 수 있다
             context.setdefault("universe", universe)
             result = analyze(row, args.view, args.size, batch=True, **context)
@@ -132,7 +145,7 @@ def main() -> int:
     print(f"만든 리포트 {made}건 · 사용 금액 {spent:,.1f}원 · {elapsed:.0f}초")
     if failed:
         print(f"실패 {len(failed)}건: {', '.join(failed[:5])}")
-    print(f"오늘 남은 생성 가능 건수 {remaining_today()}건")
+    print(f"오늘 남은 생성 가능 건수 {remaining_today(args.size)}건")
 
     if made:
         print("\n배포에 반영하려면 커밋하세요:")

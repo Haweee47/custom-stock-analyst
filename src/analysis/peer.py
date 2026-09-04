@@ -14,11 +14,16 @@ import pandas as pd
 METRICS = [
     ("영업이익률", "%", True),
     ("ROE_계산", "%", True),
+    ("ROA", "%", True),
     ("부채비율", "%", False),
     ("PER", "배", None),
+    ("PBR", "배", None),
 ]
 
 LABELS = {"ROE_계산": "ROE"}
+
+# 낮다고 좋은 것도 높다고 나쁜 것도 아닌 지표
+MEDIAN_ONLY = {"PER", "PBR"}
 
 # 표본이 너무 적으면 중앙값이 대표성을 잃는다
 MIN_PEERS = 5
@@ -31,8 +36,8 @@ def _label(metric: str) -> str:
 def _clean(series: pd.Series, metric: str) -> pd.Series:
     """비교를 왜곡하는 값을 뺀다."""
     values = pd.to_numeric(series, errors="coerce").dropna()
-    if metric == "PER":
-        # 적자 기업의 음수 PER과 극단적 고 PER은 중앙값을 흔든다
+    if metric in ("PER", "PBR"):
+        # 적자 기업의 음수 배수와 극단적 고배수는 중앙값을 흔든다
         values = values[(values > 0) & (values < 200)]
     elif metric == "부채비율":
         # 완전자본잠식이면 음수가 나온다
@@ -51,11 +56,24 @@ def _median_only(metric: str) -> bool:
     return any(name == metric and direction is None for name, _, direction in METRICS)
 
 
+def same_market(universe: pd.DataFrame, row: pd.Series) -> pd.DataFrame:
+    """비교 모집단을 같은 나라로 좁힌다.
+
+    회계 기준도 업종 분류 체계도 다르므로 국내와 해외를 한 줄에 세우면
+    중앙값이 뜻을 잃는다. '반도체'라는 이름이 같아도 같은 모집단이 아니다.
+    """
+    country = row.get("국가")
+    if not country or "국가" not in universe.columns:
+        return universe
+    return universe[universe["국가"] == country]
+
+
 def sector_stats(universe: pd.DataFrame, sector: str, row: pd.Series) -> dict | None:
-    """한 종목을 같은 업종 소분류와 비교한다. 표본이 모자라면 None."""
+    """한 종목을 같은 시장·같은 업종 소분류와 비교한다. 표본이 모자라면 None."""
     if not sector or sector == "미분류" or "업종_소분류" not in universe.columns:
         return None
 
+    universe = same_market(universe, row)
     peers = universe[universe["업종_소분류"] == sector]
     if len(peers) < MIN_PEERS:
         return None
@@ -105,7 +123,7 @@ def peer_block(row: pd.Series, universe: pd.DataFrame) -> str:
         return "[동종업계 비교]\n- 같은 업종의 비교 표본이 충분하지 않아 제공하지 않음"
 
     lines = []
-    rank = cap_rank(universe, sector, row.get("종목코드"))
+    rank = cap_rank(same_market(universe, row), sector, row.get("종목코드"))
     if rank:
         lines.append(f"- 업종 내 시가총액 순위: {stats['종목수']}개 중 {rank[0]}위")
 

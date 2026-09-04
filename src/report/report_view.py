@@ -9,7 +9,14 @@
 
 투자의견·목표주가 자리에는 넣을 수 없으므로, 그 자리를 핵심 지표가 차지한다.
 """
+import sys
+from pathlib import Path
+
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from src.analysis.money import money, price as money_price, unit_of as money_unit  # noqa: E402
 
 ACCENT = "#12386b"
 ACCENT_LINE = "#1a4d8f"
@@ -228,6 +235,9 @@ def header_html(row: pd.Series, result: dict) -> str:
 
 def yearly_table_html(row: pd.Series) -> str:
     """요약 실적 3개년 추이. 증권사 리포트의 표준 구성 요소."""
+    currency = row.get("통화")
+    if currency is None or pd.isna(currency):
+        currency = "KRW"
     base = row.get("기준연도")
     if pd.isna(base):
         return ""
@@ -256,7 +266,7 @@ def yearly_table_html(row: pd.Series) -> str:
         margins += f"<tr><td>{label}</td>{cells}<td>—</td></tr>"
 
     return f"""<div class="rpt-box">
-  <h4>요약 실적 (억원)</h4>
+  <h4>요약 실적 (억{money_unit(currency)})</h4>
   <div class="rpt-scroll"><table class="rpt-yr">
     <tr><th>구분</th>{head}</tr>
     {body}{margins}
@@ -264,24 +274,44 @@ def yearly_table_html(row: pd.Series) -> str:
 </div>"""
 
 
+# 시장마다 제공되는 지표가 다르다. 값이 없는 줄은 표에 올리지 않는다.
+VALUATION_FIELDS = [
+    ("PER", "PER", "배"),
+    ("PBR", "PBR", "배"),
+    ("ROE_계산", "ROE", "%"),
+    ("ROA", "ROA", "%"),
+    ("부채비율", "부채비율", "%"),
+    ("영업이익률", "영업이익률", "%"),
+    ("배당수익률", "배당수익률", "%"),
+]
+
+
 def metrics_html(row: pd.Series, perf: dict | None, tech: dict | None) -> str:
+    currency = row.get("통화")
+    if currency is None or pd.isna(currency):
+        currency = "KRW"
+    unit = money_unit(currency)
+
     price = [
-        ("현재주가", _num(row.get("현재가"), "원")),
-        ("시가총액", won(row.get("시가총액"))),
-        ("발행주식수", _num(row.get("상장주식수"), "천주", 1e3)),
-        ("외국인비율", _num(row.get("외국인비율"), "%", digits=2)),
+        ("현재주가", money_price(row.get("현재가"), currency, empty="—")),
+        ("시가총액", money(row.get("시가총액"), currency, empty="—")),
     ]
+    for label, key, fmt_unit, scale in [
+        ("발행주식수", "상장주식수", "천주", 1e3),
+        ("외국인비율", "외국인비율", "%", 1.0),
+    ]:
+        if pd.notna(row.get(key)):
+            price.append((label, _num(row.get(key), fmt_unit, scale, digits=2 if scale == 1.0 else 0)))
     if tech:
         price += [
-            ("1년 최고", _num(tech.get("기간고가"), "원")),
-            ("1년 최저", _num(tech.get("기간저가"), "원")),
+            ("1년 최고", _num(tech.get("기간고가"), unit)),
+            ("1년 최저", _num(tech.get("기간저가"), unit)),
         ]
 
     valuation = [
-        ("PER", _num(row.get("PER"), "배", digits=2)),
-        ("ROE", _num(row.get("ROE_계산"), "%", digits=2)),
-        ("부채비율", _num(row.get("부채비율"), "%", digits=2)),
-        ("영업이익률", _num(row.get("영업이익률"), "%", digits=2)),
+        (label, _num(row.get(key), fmt_unit, digits=2))
+        for key, label, fmt_unit in VALUATION_FIELDS
+        if pd.notna(row.get(key))
     ]
 
     blocks = ['<div class="rpt-box"><h4>주가 정보</h4>' + _rows(price) + "</div>"]

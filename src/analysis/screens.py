@@ -20,10 +20,14 @@ def _low_per(df: pd.DataFrame) -> pd.Series:
 
 
 def _high_roe(df: pd.DataFrame) -> pd.Series:
+    if not _has(df, "ROE_계산"):
+        return pd.Series(False, index=df.index)
     return df["ROE_계산"] >= 15
 
 
 def _low_debt(df: pd.DataFrame) -> pd.Series:
+    if not _has(df, "부채비율"):
+        return pd.Series(False, index=df.index)
     return (df["부채비율"] > 0) & (df["부채비율"] < 100)
 
 
@@ -59,6 +63,33 @@ SCREENS = {
     "턴어라운드": ("전년 영업적자에서 흑자로 돌아선 기업", _turnaround),
     "수익성 개선": ("영업이익률이 전년보다 좋아진 기업", _margin_improving),
 }
+
+
+# 조건마다 필요한 열. 해외 종목은 자본총계·부채총계가 없어 ROE와 부채비율을
+# 구할 수 없다. 고를 수는 있는데 결과가 늘 0건이면 이유를 알 수 없으므로,
+# 판정할 수 있는 조건만 화면에 올린다.
+REQUIRES = {
+    "흑자 기업": ["영업이익"],
+    "저PER (10배 미만)": ["PER"],
+    "고ROE (15% 이상)": ["ROE_계산"],
+    "저부채 (100% 미만)": ["부채비율"],
+    "고성장 (매출 +20%)": ["매출액", "매출액_전기"],
+    "턴어라운드": ["영업이익", "영업이익_전기"],
+    "수익성 개선": ["영업이익", "매출액", "영업이익_전기", "매출액_전기"],
+}
+
+
+def available_screens(df: pd.DataFrame) -> list[str]:
+    """이 표에서 실제로 판정할 수 있는 조건만 돌려준다.
+
+    열이 아예 없거나 전부 결측이면 뺀다. 값이 하나도 없는 조건을 보여주면
+    이용자는 '0건'만 보고 왜 그런지 알 수 없다.
+    """
+    usable = []
+    for name, columns in REQUIRES.items():
+        if all(column in df.columns and df[column].notna().any() for column in columns):
+            usable.append(name)
+    return usable
 
 
 def apply_screens(df: pd.DataFrame, selected: list[str]) -> pd.DataFrame:

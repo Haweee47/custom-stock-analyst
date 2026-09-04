@@ -18,20 +18,21 @@ from src.analysis.gemini_analyzer import (
     analyze,
     gather_context,
     load_cached,
-    load_financials,
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES
-from src.analysis.screens import SCREENS, apply_screens, screen_counts
-from src.analysis.usage_limit import SESSION_LIMIT, SessionLimitReached, remaining_today
-from src.collectors import dataset_meta
+from src.analysis.screens import apply_screens, available_screens, screen_counts
+from src.analysis.money import money, price
+from src.analysis.money import unit_of as money_unit
+from src.analysis.usage_limit import (
+    LENGTH_LIMITS,
+    SESSION_LIMIT,
+    SessionLimitReached,
+    remaining_today,
+)
+from src.collectors import dataset_meta, markets
 from src.collectors.disclosure_batch import TIER_HELP, TIER_LABELS
 from src.collectors.disclosure_batch import load as load_disclosure_flags
-from src.collectors.sector_collector import load as load_sectors
-from src.collectors.news_collector import (
-    fetch_price_history,
-    price_performance,
-    technical_summary,
-)
+from src.collectors.news_collector import price_performance, technical_summary
 from src.report.report_pdf import filename as pdf_filename
 from src.report.report_pdf import render_pdf
 from src.report.chart import plotly_chart
@@ -54,47 +55,55 @@ TEXT_MUTED = "#52514e"
 
 st.set_page_config(page_title="리포트 셀프바", page_icon="📈", layout="wide")
 
+# 사이드바에 보여줄 순서. 국내를 먼저 둔다.
+COUNTRY_ORDER = ["국내주식", "미국주식"]
+
 
 @st.cache_data
 def get_data() -> pd.DataFrame:
-    """재무에 업종을 붙여 하나의 표로 다룬다."""
-    df = load_financials()
-    sectors = load_sectors()
-    if sectors.empty:
-        df["업종_대분류"] = "미분류"
-        df["업종_소분류"] = "미분류"
+    """국내와 해외를 한 표로 합치고 국내에만 공시를 붙인다."""
+    df = markets.load_all()
+    if df.empty:
         return df
-    merged = df.merge(sectors, on="종목코드", how="left")
-    merged[["업종_대분류", "업종_소분류"]] = merged[["업종_대분류", "업종_소분류"]].fillna("미분류")
 
     flags = load_disclosure_flags()
     if not flags.empty:
-        merged = merged.merge(flags, on="종목코드", how="left")
+        df = df.merge(flags, on="종목코드", how="left", suffixes=("", "_공시"))
     for column in ["공시성격", "해당공시", "공시일자"]:
-        if column not in merged.columns:
-            merged[column] = None
-    merged["공시성격"] = merged["공시성격"].fillna("공시 없음")
-    return merged
+        if column not in df.columns:
+            df[column] = None
+
+    # 공시가 없는 것과 애초에 공시 제도를 안 보는 것은 다르다
+    domestic = df["국가"] == markets.KOREA
+    df.loc[domestic, "공시성격"] = df.loc[domestic, "공시성격"].fillna("공시 없음")
+    df.loc[~domestic, "공시성격"] = "해당 없음"
+    return df
+
+
+# 지표 이름과 표시 형식. 국가마다 쓸 수 있는 것이 달라 markets가 골라 준다.
+METRIC_LABELS = {
+    "PER": ("PER", "{:,.2f}배"),
+    "PBR": ("PBR", "{:,.2f}배"),
+    "부채비율": ("부채비율", "{:,.2f}%"),
+    "영업이익률": ("영업이익률", "{:,.2f}%"),
+    "ROE_계산": ("ROE", "{:,.2f}%"),
+    "ROA": ("ROA", "{:,.2f}%"),
+}
 
 
 def stat_row(row: pd.Series) -> None:
     """단일 수치는 차트가 아니라 스탯 타일로 보여준다."""
-    cols = st.columns(6)
-    items = [
-        ("현재가", row.get("현재가"), "{:,.0f}원"),
-        ("시가총액", row.get("시가총액"), None),
-        ("PER", row.get("PER"), "{:,.2f}배"),
-        ("부채비율", row.get("부채비율"), "{:,.2f}%"),
-        ("영업이익률", row.get("영업이익률"), "{:,.2f}%"),
-        ("ROE", row.get("ROE_계산"), "{:,.2f}%"),
-    ]
-    for col, (label, value, fmt) in zip(cols, items):
-        if pd.isna(value):
-            col.metric(label, "—")
-        elif fmt is None:
-            col.metric(label, won(value))
-        else:
-            col.metric(label, fmt.format(value))
+    currency = row.get("통화") or "KRW"
+    metrics = markets.available_metrics(row.get("국가"))
+
+    cols = st.columns(2 + len(metrics))
+    cols[0].metric("현재가", price(row.get("현재가"), currency, empty="—"))
+    cols[1].metric("시가총액", money(row.get("시가총액"), currency, empty="—"))
+
+    for col, key in zip(cols[2:], metrics):
+        label, fmt = METRIC_LABELS.get(key, (key, "{:,.2f}"))
+        value = row.get(key)
+        col.metric(label, "—" if pd.isna(value) else fmt.format(value))
 
 
 def profit_chart(row: pd.Series) -> go.Figure | None:
@@ -103,6 +112,8 @@ def profit_chart(row: pd.Series) -> go.Figure | None:
     if all(pd.isna(v) for v in values):
         return None
 
+    # 억 단위로 끊는 규칙은 통화가 달라도 같고, 단위 이름만 바뀐다
+    unit = money_unit(row.get("통화"))
     billions = [None if pd.isna(v) else v / 1e8 for v in values]
     fig = go.Figure(
         go.Bar(
@@ -113,7 +124,7 @@ def profit_chart(row: pd.Series) -> go.Figure | None:
             width=0.5,
             text=["" if v is None else f"{v:,.0f}억" for v in billions],
             textposition="outside",
-            hovertemplate="%{y}: %{x:,.0f}억원<extra></extra>",
+            hovertemplate="%{y}: %{x:,.0f}억" + unit + "<extra></extra>",
         )
     )
     fig.update_layout(
@@ -167,21 +178,29 @@ def distribution_chart(df: pd.DataFrame, row: pd.Series, metric: str) -> go.Figu
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_price_history(stock_code: str) -> pd.DataFrame:
-    """차트와 등락률에 쓰는 약 1년치 시세. 조회가 잦으므로 1시간 캐시한다."""
-    return fetch_price_history(stock_code, pages=25)
+def get_price_history(country: str, stock_code: str, lookup: str | None = None) -> pd.DataFrame:
+    """차트와 등락률에 쓰는 약 1년치 시세. 조회가 잦으므로 1시간 캐시한다.
+
+    국내와 해외는 받아오는 경로가 다르지만 열 이름은 같게 맞춰져 있다.
+    """
+    try:
+        return markets.price_history(country, stock_code, lookup)
+    except Exception as exc:  # 시세를 못 받아도 재무 화면은 살아 있어야 한다
+        print(f"[시세 조회 실패] {stock_code}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return pd.DataFrame()
 
 
-def price_chart(prices: pd.DataFrame) -> go.Figure | None:
+def price_chart(prices: pd.DataFrame, currency: str = "KRW") -> go.Figure | None:
     if prices.empty:
         return None
+    unit = money_unit(currency)
     fig = go.Figure(
         go.Scatter(
             x=prices["일자"],
             y=prices["종가"],
             mode="lines",
             line=dict(color=ACCENT, width=1.5),
-            hovertemplate="%{x|%Y-%m-%d}<br>%{y:,.0f}원<extra></extra>",
+            hovertemplate="%{x|%Y-%m-%d}<br>%{y:,.0f}" + unit + "<extra></extra>",
         )
     )
     fig.update_layout(
@@ -209,7 +228,7 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
     with left:
         st.html(metrics_html(row, perf, tech))
         if result["관점"] != "기술적":
-            fig = price_chart(prices)
+            fig = price_chart(prices, row.get("통화") or "KRW")
             if fig:
                 st.caption("주가 추이 (1년)")
                 st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
@@ -264,85 +283,122 @@ def main() -> None:
 
     with st.sidebar:
         st.header("종목 찾기")
-        markets = st.multiselect("시장", ["KOSPI", "KOSDAQ"], default=["KOSPI", "KOSDAQ"])
 
-        groups = sorted(df["업종_대분류"].dropna().unique())
-        group = st.selectbox("업종 대분류", ["전체"] + groups)
+        # 국가를 먼저 고른다. 아래 필터는 나라마다 쓸 수 있는 항목이 다르므로
+        # 여기서 정해진 범위 안에서만 만들어진다.
+        countries = [c for c in COUNTRY_ORDER if (df["국가"] == c).any()]
+        country = st.radio(
+            "시장",
+            countries,
+            horizontal=True,
+            format_func=lambda c: f"{c} ({int((df['국가'] == c).sum()):,})",
+        )
+        pool = df[df["국가"] == country]
+        domestic = country == markets.KOREA
 
-        if group == "전체":
-            sub_options = ["전체"]
-        else:
-            sub_options = ["전체"] + sorted(
-                df.loc[df["업종_대분류"] == group, "업종_소분류"].dropna().unique()
+        exchanges = sorted(pool["시장구분"].dropna().unique())
+        picked_exchanges = st.multiselect("거래소", exchanges, default=exchanges)
+
+        # 국내는 업종이 대·소분류 2단이고, 해외는 네이버 업종 하나뿐이다
+        if domestic:
+            groups = sorted(pool["업종_대분류"].dropna().unique())
+            group = st.selectbox("업종 대분류", ["전체"] + groups)
+            sub_options = (
+                ["전체"]
+                if group == "전체"
+                else ["전체"] + sorted(pool.loc[pool["업종_대분류"] == group, "업종_소분류"].dropna().unique())
             )
-        sub = st.selectbox("업종 소분류", sub_options, disabled=(group == "전체"))
+            sub = st.selectbox("업종 소분류", sub_options, disabled=(group == "전체"))
+        else:
+            group = "전체"
+            sub = st.selectbox("업종", ["전체"] + sorted(pool["업종_소분류"].dropna().unique()))
 
-        kinds = [k for k in TIER_LABELS.values() if (df["공시성격"] == k).any()]
-        kind_counts = df["공시성격"].value_counts()
-        disclosure_kinds = st.multiselect(
-            "최근 공시 (3개월)",
-            kinds,
-            format_func=lambda k: f"{k} ({kind_counts.get(k, 0):,})",
-            help=" / ".join(f"{k}: {v}" for k, v in TIER_HELP.items()),
-        )
-        hide_risky = st.checkbox(
-            "중대 공시 종목 제외",
-            help="상장폐지·관리종목 지정우려·자본잠식 등의 공시가 있는 종목을 목록에서 뺍니다.",
-        )
+        if domestic:
+            kinds = [k for k in TIER_LABELS.values() if (pool["공시성격"] == k).any()]
+            kind_counts = pool["공시성격"].value_counts()
+            disclosure_kinds = st.multiselect(
+                "최근 공시 (3개월)",
+                kinds,
+                format_func=lambda k: f"{k} ({kind_counts.get(k, 0):,})",
+                help=" / ".join(f"{k}: {v}" for k, v in TIER_HELP.items()),
+            )
+            hide_risky = st.checkbox(
+                "중대 공시 종목 제외",
+                help="상장폐지·관리종목 지정우려·자본잠식 등의 공시가 있는 종목을 목록에서 뺍니다.",
+            )
+        else:
+            disclosure_kinds, hide_risky = [], False
 
-        counts = screen_counts(df)
+        # 해외는 자본총계가 없어 ROE·부채비율 조건을 판정할 수 없다.
+        # 고를 수는 있는데 늘 0건이면 이유를 알 수 없으므로 아예 빼고 보여준다.
+        usable = available_screens(pool)
+        counts = screen_counts(pool)
         screens = st.multiselect(
             "재무 특성",
-            list(SCREENS),
+            usable,
             format_func=lambda name: f"{name} ({counts[name]:,})",
             help="여러 개를 고르면 모두 만족하는 종목만 남습니다.",
         )
+        if not domestic:
+            st.caption("해외 종목은 자본·부채총계가 제공되지 않아 ROE·부채비율 조건은 뺐습니다.")
 
-        caps = df["시가총액"].dropna() / 1e8
-        cap_ceiling = int(caps.max())
+        # 통화가 섞이므로 시총 범위는 원화 환산 기준으로 건다
+        caps = pool["시가총액_원화"].dropna() / 1e8
+        cap_ceiling = int(caps.max()) if not caps.empty else 0
 
-        # 슬라이더와 숫자 입력이 서로를 갱신하도록 세션 상태를 공유한다
-        if "cap_range" not in st.session_state:
-            st.session_state.cap_range = (0, cap_ceiling)
+        # 시총 상한이 나라마다 다르므로 키에 국가를 붙인다. 하나로 두면 미국에서
+        # 고른 범위가 국내로 넘어와 슬라이더 범위를 벗어난다.
+        range_key = f"cap_range_{country}"
+        low_key, high_key = f"cap_low_{country}", f"cap_high_{country}"
+        if range_key not in st.session_state:
+            st.session_state[range_key] = (0, cap_ceiling)
 
-        st.markdown("**시가총액 (억원)**")
+        st.markdown("**시가총액 (억원, 원화 환산)**")
         st.slider(
             "시가총액 범위",
             min_value=0,
             max_value=cap_ceiling,
             step=100,
-            key="cap_range",
+            key=range_key,
             label_visibility="collapsed",
         )
 
         def _sync_from_inputs() -> None:
-            low = st.session_state.cap_low
-            high = st.session_state.cap_high
-            st.session_state.cap_range = (min(low, high), max(low, high))
+            low = st.session_state[low_key]
+            high = st.session_state[high_key]
+            st.session_state[range_key] = (min(low, high), max(low, high))
 
         low_col, high_col = st.columns(2)
         low_col.number_input(
             "최소",
             min_value=0,
             max_value=cap_ceiling,
-            value=st.session_state.cap_range[0],
+            value=st.session_state[range_key][0],
             step=100,
-            key="cap_low",
+            key=low_key,
             on_change=_sync_from_inputs,
         )
         high_col.number_input(
             "최대",
             min_value=0,
             max_value=cap_ceiling,
-            value=st.session_state.cap_range[1],
+            value=st.session_state[range_key][1],
             step=100,
-            key="cap_high",
+            key=high_key,
             on_change=_sync_from_inputs,
         )
 
-        cap_min, cap_max = st.session_state.cap_range
+        cap_min, cap_max = st.session_state[range_key]
         st.caption(f"{cap_min:,}억원 ~ {cap_max:,}억원")
-        keyword = st.text_input("종목명 검색", placeholder="예: 삼성")
+        if not domestic:
+            rate, fresh = markets.fx_rate("USD")
+            st.caption(
+                f"환율 {rate:,.1f}원/달러 적용"
+                + ("" if fresh else " (환율 갱신 실패, 최근 값 사용)")
+            )
+        keyword = st.text_input(
+            "종목명 검색", placeholder="예: 삼성" if domestic else "예: 애플, NVDA"
+        )
 
         st.divider()
         age = dataset_meta.days_old()
@@ -357,11 +413,11 @@ def main() -> None:
                 for name, info in meta.items():
                     st.caption(f"{dataset_meta.LABELS.get(name, name)} · {info.get('갱신', '')}")
 
-    view = df[df["시장구분"].isin(markets)]
+    view = pool[pool["시장구분"].isin(picked_exchanges)]
     if group != "전체":
         view = view[view["업종_대분류"] == group]
-        if sub != "전체":
-            view = view[view["업종_소분류"] == sub]
+    if sub != "전체":
+        view = view[view["업종_소분류"] == sub]
     if disclosure_kinds:
         view = view[view["공시성격"].isin(disclosure_kinds)]
     if hide_risky:
@@ -369,28 +425,34 @@ def main() -> None:
     if screens:
         view = apply_screens(view, screens)
     view = view[
-        view["시가총액"].isna()
-        | ((view["시가총액"] / 1e8 >= cap_min) & (view["시가총액"] / 1e8 <= cap_max))
+        view["시가총액_원화"].isna()
+        | ((view["시가총액_원화"] / 1e8 >= cap_min) & (view["시가총액_원화"] / 1e8 <= cap_max))
     ]
     if keyword:
-        view = view[view["종목명"].str.contains(keyword, case=False, na=False)]
+        # 해외는 영문 티커나 영문명으로 찾는 사람이 많다
+        haystack = view["종목명"].fillna("")
+        for column in ("영문명", "종목코드"):
+            if column in view.columns:
+                haystack = haystack + " " + view[column].fillna("")
+        view = view[haystack.str.contains(keyword, case=False, na=False)]
 
-    st.sidebar.caption(f"조건에 맞는 종목 {len(view):,}개 / 전체 {len(df):,}개")
+    st.sidebar.caption(f"조건에 맞는 종목 {len(view):,}개 / {country} {len(pool):,}개")
     st.sidebar.caption(
-        "ETF·ETN·우선주는 재무제표가 없어 분석 대상에서 제외했습니다. "
-        "보통주만 다룹니다."
+        "ETF·ETN·우선주는 재무제표가 없어 분석 대상에서 제외했습니다. 보통주만 다룹니다."
+        if domestic
+        else "나스닥·뉴욕 상장 종목입니다. 공시와 뉴스는 제공되지 않습니다."
     )
     if view.empty:
         st.warning("조건에 맞는 종목이 없습니다. 필터를 넓혀보세요.")
         return
 
-    options = view.sort_values("시가총액", ascending=False)
+    options = view.sort_values("시가총액_원화", ascending=False)
     labels = {
         f"{'⚠ ' if r['공시성격'] == '중대 공시' else ''}{r['종목명']} ({r['종목코드']})": r["종목코드"]
         for _, r in options.iterrows()
     }
     picked = st.sidebar.selectbox("종목 선택", list(labels))
-    row = df[df["종목코드"] == labels[picked]].iloc[0]
+    row = pool[pool["종목코드"] == labels[picked]].iloc[0]
 
     st.subheader(f"{row['종목명']} · {row['시장구분']} · {row['종목코드']}")
     if row.get("공시성격") == "중대 공시":
@@ -410,39 +472,49 @@ def main() -> None:
         else:
             st.info("재무 데이터가 없습니다.")
     with right:
-        st.markdown("##### 전체 종목 대비 위치")
+        st.markdown(f"##### {country} 전체 대비 위치")
         metric = st.selectbox(
-            "지표", ["부채비율", "영업이익률", "ROE_계산", "PER"], label_visibility="collapsed"
+            "지표",
+            markets.available_metrics(country),
+            format_func=lambda k: METRIC_LABELS.get(k, (k, ""))[0],
+            label_visibility="collapsed",
         )
-        fig = distribution_chart(df, row, metric)
+        # 비교는 같은 시장 안에서만 한다. 나라를 섞으면 회계 기준이 달라 뜻이 없다.
+        fig = distribution_chart(pool, row, metric)
         if fig:
             st.plotly_chart(fig, width="stretch")
         else:
             st.info("이 지표는 데이터가 없습니다.")
 
     with st.expander("숫자로 보기"):
-        cols = ["매출액", "영업이익", "당기순이익", "자산총계", "부채총계", "자본총계"]
-        # 소수점은 억원 단위에서 의미가 없으므로 반올림하고 쉼표만 남긴다
+        # 해외는 자산·부채·자본총계가 제공되지 않아 항목이 다르다
+        cols = [
+            c
+            for c in ["매출액", "영업이익", "당기순이익", "EBITDA", "자산총계", "부채총계", "자본총계"]
+            if pd.notna(row.get(c))
+        ]
+        unit = money_unit(row.get("통화"))
         table = pd.DataFrame(
             {
                 "항목": cols,
-                "금액(억원)": [
-                    f"{row.get(c) / 1e8:,.0f}" if pd.notna(row.get(c)) else "—"
-                    for c in cols
-                ],
+                f"금액(억{unit})": [f"{row.get(c) / 1e8:,.0f}" for c in cols],
             }
         )
         st.dataframe(table, hide_index=True, width="stretch")
+        if not domestic:
+            st.caption("해외 종목은 자산·부채·자본총계가 제공되지 않습니다. 영업이익은 EBIT 기준입니다.")
 
     st.divider()
     st.markdown("##### AI 리포트")
 
+    # 관점도 나라마다 다르다. 해외는 뉴스·공시가 없어 '이슈·트렌드'를 열지 않는다.
+    views = markets.available_perspectives(country)
     opt_left, opt_right = st.columns(2)
     perspective = opt_left.radio(
         "분석 관점",
-        list(PERSPECTIVES),
+        views,
         horizontal=True,
-        captions=[PERSPECTIVES[k]["설명"] for k in PERSPECTIVES],
+        captions=[PERSPECTIVES[k]["설명"] for k in views],
     )
     length = opt_right.radio(
         "분량",
@@ -450,21 +522,28 @@ def main() -> None:
         horizontal=True,
         captions=[LENGTHS[k]["설명"] for k in LENGTHS],
     )
+    if not domestic:
+        st.caption("해외 종목은 뉴스·공시를 제공하지 않아 '이슈·트렌드' 관점은 열지 않았습니다.")
+
+    prices = get_price_history(country, row["종목코드"], row.get("조회코드"))
 
     cached = load_cached(row["종목코드"], perspective, length)
     if cached:
-        render_report(cached, row, get_price_history(row["종목코드"]))
+        render_report(cached, row, prices)
     else:
-        st.caption(
-            f"오늘 신규 생성 {_usage_today()}/{DAILY_LIMIT}건 사용 "
-            f"(남은 {remaining_today()}건, 이번 접속에서 최대 {SESSION_LIMIT}건)"
-        )
+        # 상세형은 출력이 길어 비용이 높으므로 하루 상한을 따로 둔다
+        note = f"오늘 신규 생성 {_usage_today()}/{DAILY_LIMIT}건 사용"
+        cap = LENGTH_LIMITS.get(length)
+        if cap:
+            note += f" · {length} {_usage_today(length)}/{cap}건"
+        note += f" (남은 {remaining_today(length)}건, 이번 접속에서 최대 {SESSION_LIMIT}건)"
+        st.caption(note)
         if st.button(f"{perspective} 관점으로 리포트 생성", type="primary"):
             try:
                 with st.spinner("데이터를 모으고 리포트를 작성하는 중..."):
-                    context = gather_context(row["종목코드"], perspective)
+                    context = gather_context(row, perspective)
                     result = analyze(row, perspective, length, **context)
-                render_report(result, row, get_price_history(row["종목코드"]))
+                render_report(result, row, prices)
             except (DailyLimitReached, SessionLimitReached) as exc:
                 st.warning(str(exc))
             except ApiKeyMissing as exc:

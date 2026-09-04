@@ -18,6 +18,8 @@ from src.analysis.screens import SCREENS, apply_screens  # noqa: E402
 from src.collectors.indicators import bollinger, ichimoku, rsi  # noqa: E402
 from src.report.report_view import won  # noqa: E402
 from src.analysis import peer  # noqa: E402
+from src.analysis.money import money as money_of  # noqa: E402
+from src.analysis.money import price as price_of  # noqa: E402
 from src.analysis.gemini_analyzer import (  # noqa: E402
     _growth,
     _money,
@@ -324,6 +326,7 @@ class TestUsageLimit:
         # 37건이 되어야 한다. 예전에는 max()를 쓰는 바람에 30건으로 덮여 7건이 사라졌다.
         import json
 
+        # 예전 형식(날짜: 정수)도 그대로 읽을 수 있어야 한다
         limiter.USAGE_PATH.write_text(
             json.dumps({limiter._today(): 7}), encoding="utf-8"
         )
@@ -331,7 +334,7 @@ class TestUsageLimit:
             limiter.record(session=False)
 
         stored = json.loads(limiter.USAGE_PATH.read_text(encoding="utf-8"))
-        assert stored[limiter._today()] == 37
+        assert stored[limiter._today()][limiter.TOTAL] == 37
         assert limiter.used_today() == 37
         assert limiter.remaining_today() == limiter.DAILY_LIMIT - 37
 
@@ -427,3 +430,187 @@ class TestPriceRefresh:
         module, path = collector
         path.unlink()
         assert module.refresh_prices(2025) == 0
+
+
+class TestCurrencyMoney:
+    """시장이 섞이면 단위 오류가 가장 위험하다. 달러를 원으로 적으면 안 된다."""
+
+    @pytest.mark.parametrize(
+        "value,currency,expected",
+        [
+            (333_605_938_000_000, "KRW", "333조 6,059억원"),
+            (215_938_000_000, "USD", "2,159억달러"),
+            (5_505_645_000_000, "USD", "5조 5,056억달러"),
+            (95_000_000_000, "JPY", "950억엔"),
+        ],
+    )
+    def test_통화별_표기(self, value, currency, expected):
+        assert money_of(value, currency) == expected
+
+    def test_원화_주가는_소수점을_쓰지_않는다(self):
+        assert price_of(255500, "KRW") == "255,500원"
+
+    def test_달러_주가는_센트까지_남긴다(self):
+        # 228.45를 228로 적으면 정보가 사라진다
+        assert price_of(228.45, "USD") == "228.45달러"
+
+    def test_모르는_통화도_깨지지_않는다(self):
+        assert money_of(1_000_000_000, "XYZ").endswith("XYZ")
+
+
+class TestMarketAwarePrompt:
+    @pytest.fixture
+    def us_row(self):
+        return pd.Series(
+            {
+                "종목코드": "NVDA",
+                "종목명": "엔비디아",
+                "영문명": "NVIDIA Corporation",
+                "시장구분": "나스닥",
+                "국가": "미국주식",
+                "통화": "USD",
+                "업종_소분류": "반도체",
+                "업종_대분류": "반도체",
+                "현재가": 228.45,
+                "시가총액": 5.505645e12,
+                "매출액": 215938e6,
+                "매출액_전기": 130497e6,
+                "매출액_전전기": 60922e6,
+                "영업이익": 134887e6,
+                "당기순이익": 120067e6,
+                "PER": 43.05,
+                "ROA": 75.42,
+                "영업이익률": 62.47,
+                "기준연도": 2026,
+            }
+        )
+
+    def test_해외_금액은_달러로_적힌다(self, us_row):
+        prompt = build_prompt(us_row, "펀더멘탈", "압축형")
+        assert "2,159억달러" in prompt
+        assert "2,159억원" not in prompt
+
+    def test_통화를_명시한다(self, us_row):
+        assert "원화가 아니다" in build_prompt(us_row, "펀더멘탈", "압축형")
+
+    def test_없는_계정은_줄을_넣지_않는다(self, us_row):
+        # '자본총계: 데이터 없음'을 늘어놓으면 모델이 빈칸을 근거처럼 다룬다.
+        # 제약 안내문에는 그 이름이 나와도 되므로 데이터 구간만 본다.
+        data = build_prompt(us_row, "펀더멘탈", "압축형").split("[분석 관점")[0]
+        assert "데이터 없음" not in data
+        assert "- 자본총계" not in data
+        assert "- 부채비율" not in data
+
+    def test_해외에는_공시블록을_넣지_않는다(self, us_row):
+        assert "[최근 공시]" not in build_prompt(us_row, "펀더멘탈", "압축형")
+
+    def test_시장_제약을_알려준다(self, us_row):
+        prompt = build_prompt(us_row, "펀더멘탈", "압축형")
+        assert "부채비율과 ROE는 알 수 없다" in prompt
+
+    def test_국내는_제약문구가_붙지_않는다(self):
+        row = pd.Series(
+            {
+                "종목코드": "005930",
+                "종목명": "삼성전자",
+                "시장구분": "KOSPI",
+                "국가": "국내주식",
+                "통화": "KRW",
+                "현재가": 255500.0,
+                "시가총액": 1.5e15,
+                "매출액": 3.3e14,
+                "부채비율": 29.94,
+                "기준연도": 2025,
+            }
+        )
+        assert "이 시장의 데이터 제약" not in build_prompt(row, "펀더멘탈", "압축형")
+
+
+class TestPeerMarketScope:
+    @pytest.fixture
+    def mixed(self):
+        rows = []
+        for i in range(6):
+            rows.append(
+                {
+                    "종목코드": f"K{i}",
+                    "국가": "국내주식",
+                    "업종_소분류": "반도체",
+                    "시가총액": 100 - i,
+                    "영업이익률": 5.0 + i,
+                }
+            )
+        for i in range(6):
+            rows.append(
+                {
+                    "종목코드": f"U{i}",
+                    "국가": "미국주식",
+                    "업종_소분류": "반도체",
+                    "시가총액": 900 - i,
+                    "영업이익률": 40.0 + i,
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def test_같은_나라끼리만_비교한다(self, mixed):
+        """국내 반도체를 미국 반도체와 섞으면 중앙값이 뜻을 잃는다."""
+        korean = mixed[mixed["종목코드"] == "K0"].iloc[0]
+        stats = peer.sector_stats(mixed, "반도체", korean)
+        assert stats["종목수"] == 6
+        assert stats["지표"]["영업이익률"]["중앙값"] == 7.5
+
+    def test_시총순위도_같은_나라_안에서(self, mixed):
+        korean = mixed[mixed["종목코드"] == "K0"].iloc[0]
+        assert peer.cap_rank(peer.same_market(mixed, korean), "반도체", "K0") == (1, 6)
+
+
+class TestLengthLimit:
+    """상세형은 출력이 길어 1건 5.03원. 전체 상한과 별개로 따로 조인다."""
+
+    @pytest.fixture
+    def limiter(self, tmp_path, monkeypatch):
+        import importlib
+
+        from src.analysis import usage_limit as module
+
+        importlib.reload(module)
+        monkeypatch.setattr(module, "USAGE_PATH", tmp_path / "usage.json")
+        return module
+
+    def test_상세형_상한에_걸린다(self, limiter):
+        cap = limiter.LENGTH_LIMITS["상세형"]
+        for _ in range(cap):
+            limiter.check("상세형", session=False)
+            limiter.record("상세형", session=False)
+
+        with pytest.raises(limiter.DailyLimitReached):
+            limiter.check("상세형", session=False)
+
+    def test_상세형이_막혀도_압축형은_열려_있다(self, limiter):
+        for _ in range(limiter.LENGTH_LIMITS["상세형"]):
+            limiter.record("상세형", session=False)
+
+        limiter.check("압축형", session=False)  # 예외 없이 통과해야 한다
+        assert limiter.remaining_today("압축형") > 0
+        assert limiter.remaining_today("상세형") == 0
+
+    def test_분량별로_따로_센다(self, limiter):
+        limiter.record("압축형", session=False)
+        limiter.record("압축형", session=False)
+        limiter.record("상세형", session=False)
+
+        assert limiter.used_today() == 3
+        assert limiter.used_today("압축형") == 2
+        assert limiter.used_today("상세형") == 1
+
+    def test_전체_상한이_먼저_걸리면_분량과_무관하게_막힌다(self, limiter, monkeypatch):
+        monkeypatch.setattr(limiter, "used_today", lambda length=None: limiter.DAILY_LIMIT)
+        with pytest.raises(limiter.DailyLimitReached):
+            limiter.check("압축형", session=False)
+
+    def test_남은_건수는_더_작은_쪽을_따른다(self, limiter):
+        for _ in range(8):
+            limiter.record("상세형", session=False)
+        # 전체는 92건 남았지만 상세형은 2건뿐이다
+        assert limiter.remaining_today() == limiter.DAILY_LIMIT - 8
+        assert limiter.remaining_today("상세형") == 2

@@ -27,6 +27,7 @@ from src.analysis.report_spec import (  # noqa: E402
     SYSTEM_RULES,
 )
 
+from src.analysis import money as money_module  # noqa: E402
 from src.analysis import peer, usage_limit  # noqa: E402
 from src.analysis.usage_limit import (  # noqa: E402
     DAILY_LIMIT,
@@ -45,7 +46,8 @@ CACHE_TTL_DAYS = 7
 # 프롬프트를 고치면 이 숫자를 올린다. 낮은 버전으로 만들어진 캐시는 만료로 처리한다.
 # 이것이 없으면 프롬프트 버그를 고쳐도 이미 저장된 리포트가 7일간 그대로 나간다.
 # v2: 금액을 조·억 표기로 바꾸고(10배 오독 수정) 3개년 추이·동종업계 비교를 추가
-PROMPT_VERSION = 2
+# v3: 해외 시장 지원. 통화별 표기, 시장별 데이터 제약 안내, 증감률 비교 대상 명시
+PROMPT_VERSION = 3
 
 DISCLAIMER = (
     "이 리포트는 AI가 공개 데이터로 생성한 정보이며 투자 권유가 아닙니다. "
@@ -106,59 +108,53 @@ def _fmt(value, unit: str = "", scale: float = 1.0) -> str:
     return f"{value / scale:,.2f}{unit}"
 
 
-def _money(value) -> str:
-    """금액을 조·억으로 끊어 쓴다.
+def _money(value, currency: str = "KRW") -> str:
+    """금액을 조·억으로 끊어 쓴다. 단위 이름은 통화를 따른다.
 
     억원으로 고정하면 삼성전자 매출이 '3,336,059.38억원'이 되는데, 모델이 이
     자릿수를 잘못 읽고 '3,336조원'으로 옮겨 적는 일이 실제로 있었다(실제 333.6조).
     사람이 읽는 방식대로 끊어 주면 그대로 베껴 쓰면 되므로 오독이 사라진다.
     """
-    if value is None or pd.isna(value):
-        return "데이터 없음"
-
-    sign = "-" if value < 0 else ""
-    amount = abs(float(value))
-    trillion, remainder = divmod(amount, 1e12)
-    billion = remainder / 1e8
-
-    if trillion >= 1:
-        return f"{sign}{trillion:,.0f}조 {billion:,.0f}억원"
-    if amount >= 1e8:
-        return f"{sign}{billion:,.0f}억원"
-    return f"{sign}{amount:,.0f}원"
+    return money_module.money(value, currency)
 
 
 def _growth(current, previous) -> str:
     """전년 대비 증감률. 적자에서 흑자로 돌아선 경우는 비율이 의미가 없다."""
-    if current is None or previous is None or pd.isna(current) or pd.isna(previous):
-        return ""
-    if previous == 0:
-        return ""
-    if previous < 0 < current:
-        return " (흑자 전환)"
-    if current < 0 < previous:
-        return " (적자 전환)"
-    rate = (current - previous) / abs(previous) * 100
-    return f" ({rate:+.1f}%)"
+    return money_module.growth(current, previous)
+
+
+def _currency(row: pd.Series) -> str:
+    value = row.get("통화")
+    return "KRW" if value is None or pd.isna(value) else str(value)
 
 
 def _basic_block(row: pd.Series) -> str:
+    currency = _currency(row)
     lines = [
         f"- 종목명: {row['종목명']} ({row['종목코드']})",
         f"- 시장: {row['시장구분']}",
     ]
+    english = row.get("영문명")
+    if english and not pd.isna(english):
+        lines.append(f"- 영문명: {english}")
+
     sector = row.get("업종_소분류")
     if sector and not pd.isna(sector) and sector != "미분류":
         group = row.get("업종_대분류")
-        lines.append(f"- 업종: {group} > {sector}" if group and not pd.isna(group) else f"- 업종: {sector}")
+        same = group is None or pd.isna(group) or group == sector
+        lines.append(f"- 업종: {sector}" if same else f"- 업종: {group} > {sector}")
 
-    price = row.get("현재가")
-    lines.append(f"- 현재가: {'데이터 없음' if pd.isna(price) else f'{price:,.0f}원'}")
+    lines.append(f"- 현재가: {money_module.price(row.get('현재가'), currency)}")
     if not pd.isna(row.get("등락률")):
         lines.append(f"- 전일 대비: {row.get('등락률'):+.2f}%")
-    lines.append(f"- 시가총액: {_money(row.get('시가총액'))}")
+    lines.append(f"- 시가총액: {_money(row.get('시가총액'), currency)}")
     if not pd.isna(row.get("외국인비율")):
         lines.append(f"- 외국인 지분율: {row.get('외국인비율'):.2f}%")
+
+    # 통화를 못 박아 둬야 모델이 달러를 원화로 착각하지 않는다
+    if currency != "KRW":
+        unit = money_module.unit_of(currency)
+        lines.append(f"- 표시 통화: {currency}. 모든 금액은 {unit} 기준이며 원화가 아니다.")
 
     return "[기본 정보]\n" + "\n".join(lines)
 
@@ -173,13 +169,21 @@ def _trend_block(row: pd.Series) -> str:
         return ""
     base = int(base)
 
+    currency = _currency(row)
     lines = []
     for account in ACCOUNTS:
         values = [row.get(f"{account}_전전기"), row.get(f"{account}_전기"), row.get(account)]
-        if all(v is None or pd.isna(v) for v in values):
+        years = [base - 2, base - 1, base]
+
+        # 값이 있는 해만 남긴다. '데이터 없음 → 데이터 없음 → 1,349억달러'는
+        # 추이가 아니라 잡음이고, 모델이 그 빈칸을 감소로 읽을 수도 있다.
+        have = [(year, value) for year, value in zip(years, values) if pd.notna(value)]
+        if len(have) < 2:
             continue
-        parts = [f"{base - 2}년 {_money(values[0])}", f"{base - 1}년 {_money(values[1])}"]
-        parts.append(f"{base}년 {_money(values[2])}{_growth(values[2], values[1])}")
+
+        parts = [f"{year}년 {_money(value, currency)}" for year, value in have]
+        if have[-1][0] == base and len(have) >= 2:
+            parts[-1] += _growth(have[-1][1], have[-2][1])
         lines.append(f"- {account}: " + " → ".join(parts))
 
     if not lines:
@@ -187,7 +191,8 @@ def _trend_block(row: pd.Series) -> str:
     return (
         f"[3개년 추이 ({base - 2}~{base}년)]\n"
         + "\n".join(lines)
-        + "\n(괄호 안은 전년 대비 증감률이다. 이 추세를 반드시 분석에 반영하라.)"
+        + f"\n(괄호 안 증감률은 {base - 1}년 대비 {base}년 값이다. 직전 연도 기준이며 "
+        f"{base - 2}년 대비가 아니다. 이 추세를 반드시 분석에 반영하라.)"
     )
 
 
@@ -198,21 +203,43 @@ def _pbr(row: pd.Series) -> float | None:
     return cap / equity
 
 
+# 항목마다 (열 이름, 표기, 단위). 값이 없는 줄은 아예 넣지 않는다.
+# 해외는 자산·부채·자본총계가 없는데 '데이터 없음'을 여섯 줄 늘어놓으면
+# 모델이 그 빈칸을 근거처럼 다루거나 없는 값을 지어내기 쉽다.
+MONEY_FIELDS = ["매출액", "영업이익", "당기순이익", "EBITDA", "자산총계", "부채총계", "자본총계"]
+RATIO_FIELDS = [
+    ("부채비율", "부채비율", "%"),
+    ("영업이익률", "영업이익률", "%"),
+    ("ROE_계산", "ROE", "%"),
+    ("ROA", "ROA", "%"),
+    ("PER", "PER", "배"),
+    ("PBR", "PBR", "배"),
+    ("배당수익률", "배당수익률", "%"),
+]
+
+
 def _financial_block(row: pd.Series) -> str:
+    currency = _currency(row)
+    period = f"{row.get('기준연도', '')}년"
+    report = row.get("보고서")
+    if report and not pd.isna(report):
+        period += f" {report}"
+
+    lines = [
+        f"- {name}: {_money(row.get(name), currency)}"
+        for name in MONEY_FIELDS
+        if pd.notna(row.get(name))
+    ]
+
     pbr = _pbr(row)
-    block = f"""[재무 ({row.get('기준연도', '')}년 {row.get('보고서', '')} 기준)]
-- 매출액: {_money(row.get('매출액'))}
-- 영업이익: {_money(row.get('영업이익'))}
-- 당기순이익: {_money(row.get('당기순이익'))}
-- 자산총계: {_money(row.get('자산총계'))}
-- 부채총계: {_money(row.get('부채총계'))}
-- 자본총계: {_money(row.get('자본총계'))}
-- 부채비율: {_fmt(row.get('부채비율'), '%')}
-- 영업이익률: {_fmt(row.get('영업이익률'), '%')}
-- ROE: {_fmt(row.get('ROE_계산'), '%')}
-- PER: {_fmt(row.get('PER'), '배')}"""
-    if pbr is not None:
-        block += f"\n- PBR: {pbr:,.2f}배"
+    for key, label, unit in RATIO_FIELDS:
+        value = row.get(key)
+        if key == "PBR" and (value is None or pd.isna(value)) and pbr is not None:
+            value = pbr
+        if pd.notna(value):
+            lines.append(f"- {label}: {_fmt(value, unit)}")
+
+    block = f"[재무 ({period} 기준)]\n" + "\n".join(lines)
 
     trend = _trend_block(row)
     return f"{block}\n\n{trend}" if trend else block
@@ -239,6 +266,39 @@ def _disclosure_block(disclosures: list[dict]) -> str:
     return f"[최근 주요 공시 (중요도순, 최근 6개월)]\n{lines}"
 
 
+def _market_limits(country: str) -> str:
+    """이 시장에서 못 쓰는 재료를 미리 알려 준다.
+
+    관점 지시문은 국내 기준으로 쓰여 있어서 '부채비율과 ROE를 다뤄라'라고 말한다.
+    해외 종목에 그대로 주면 모델이 없는 값을 지어내거나 '확인 불가'를 반복한다.
+    """
+    from src.collectors import markets
+
+    if country == markets.KOREA:
+        return ""
+
+    missing = []
+    if country not in markets.HAS_DISCLOSURE:
+        missing.append("공시")
+    if country not in markets.HAS_NEWS:
+        missing.append("뉴스")
+
+    lines = [
+        "\n[이 시장의 데이터 제약 — 반드시 지켜라]",
+        "- 자산·부채·자본총계가 제공되지 않는다. 따라서 부채비율과 ROE는 알 수 없다. "
+        "위 지시에 그 지표가 있더라도 다루지 마라. 추정하지도 마라.",
+        "- 재무 안정성을 논할 근거가 없으므로 '재무가 건전하다/불안하다'고 단정하지 마라.",
+        "- 수익성은 영업이익률, 자본 효율성은 ROA로 대신 본다. "
+        "영업이익은 EBIT(이자·세금 차감 전 이익) 기준이다.",
+    ]
+    if missing:
+        lines.append(
+            f"- {'·'.join(missing)} 데이터가 제공되지 않는다. 그 내용을 지어내지 말고, "
+            "재무와 주가로 확인되는 것만 서술하라."
+        )
+    return "\n".join(lines)
+
+
 def build_prompt(
     row: pd.Series,
     perspective: str,
@@ -248,7 +308,10 @@ def build_prompt(
     disclosures: list[dict] | None = None,
     universe: pd.DataFrame | None = None,
 ) -> str:
+    from src.collectors import markets
+
     spec, size = PERSPECTIVES[perspective], LENGTHS[length]
+    country = row.get("국가") or markets.KOREA
 
     blocks = [_basic_block(row)]
     if "재무" in spec["데이터"]:
@@ -257,18 +320,21 @@ def build_prompt(
         blocks.append(peer.peer_block(row, universe))
     if "기술" in spec["데이터"]:
         blocks.append(_technical_block(tech or {}))
-    if "뉴스" in spec["데이터"]:
+    # 시장에 없는 재료는 블록 자체를 넣지 않는다. '없음'이라고 적어 두면
+    # 모델이 그것을 사실처럼 다루거나 빈칸을 채우려 든다.
+    if "뉴스" in spec["데이터"] and markets.has_news(country):
         blocks.append(_news_block(news or []))
-    if "공시" in spec["데이터"]:
+    if "공시" in spec["데이터"] and markets.has_disclosure(country):
         blocks.append(_disclosure_block(disclosures or []))
 
     data = "\n\n".join(blocks)
+    limits = _market_limits(country)
     return f"""다음 데이터로 기업 리포트를 작성하라.
 
 {data}
 
 [분석 관점: {perspective}]
-{spec['지시']}
+{spec['지시']}{limits}
 
 [분량: {length}]
 - 섹션 {size['섹션수']}, {size['본문길이']}
@@ -276,6 +342,10 @@ def build_prompt(
 
 [출력 전 자기 점검]
 - 금액은 위 데이터에 적힌 표기를 그대로 옮겼는가? 조와 억을 바꿔 쓰지 않았는가?
+- 통화를 바꿔 쓰지 않았는가? 달러를 원으로 적지 않았는가?
+- 증감률을 쓸 때 비교 대상을 정확히 밝혔는가? 주어진 증감률은 직전 연도 대비다.
+  'A년 대비 B% 증가'라고 쓸 거라면 그 A년과 B가 실제로 짝이 맞는지 확인하라.
+  짝이 맞는지 자신이 없으면 비율 대신 '늘었다/줄었다'로만 쓰라.
 - 데이터에 없는 수치를 하나라도 새로 만들어내지 않았는가?
 - '데이터한계'에 쓴 내용이 실제로 주어진 데이터 범위와 일치하는가?"""
 
@@ -303,7 +373,7 @@ def analyze(
         if cached:
             return cached
 
-    usage_limit.check(session=not batch)
+    usage_limit.check(length, session=not batch)
 
     response = _client().models.generate_content(
         model=MODEL,
@@ -332,12 +402,12 @@ def analyze(
     _cache_path(stock_code, perspective, length).write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    usage_limit.record(session=not batch)
+    usage_limit.record(length, session=not batch)
     return result
 
 
-def _usage_today() -> int:
-    return usage_limit.used_today()
+def _usage_today(length: str | None = None) -> int:
+    return usage_limit.used_today(length)
 
 
 def load_financials(year: int = 2025) -> pd.DataFrame:
@@ -350,44 +420,60 @@ def load_financials(year: int = 2025) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=1)
-def load_universe(year: int = 2025) -> pd.DataFrame:
-    """재무에 업종을 붙인 전체 종목 표. 동종업계 비교의 모집단이다."""
-    from src.collectors.sector_collector import load as load_sectors
+def load_universe() -> pd.DataFrame:
+    """국내와 해외를 합친 전체 종목 표. 동종업계 비교의 모집단이다."""
+    from src.collectors.markets import load_all
 
-    df = load_financials(year)
-    sectors = load_sectors()
-    if sectors.empty:
-        df["업종_대분류"] = "미분류"
-        df["업종_소분류"] = "미분류"
-        return df
-    merged = df.merge(sectors, on="종목코드", how="left")
-    columns = ["업종_대분류", "업종_소분류"]
-    merged[columns] = merged[columns].fillna("미분류")
-    return merged
+    return load_all()
 
 
-def gather_context(stock_code: str, perspective: str) -> dict:
-    """관점에 필요한 데이터만 수집한다. 불필요한 호출을 하지 않는다."""
-    from src.collectors.news_collector import (
-        fetch_news,
-        fetch_price_history,
-        technical_summary,
-    )
+def gather_context(row, perspective: str) -> dict:
+    """관점에 필요한 데이터만 모은다. 시장에 없는 재료는 아예 부르지 않는다.
 
-    from src.api.disclosure import fetch_important
+    해외는 뉴스와 공시가 없다. 없는 것을 빈 값으로 넘기면 모델이 '뉴스 없음'을
+    근거처럼 다루므로, 애초에 그 관점을 열지 않는 쪽(markets.PERSPECTIVES)과
+    여기서 호출을 건너뛰는 쪽을 함께 둔다.
+    """
+    from src.collectors import markets
 
+    # 문자열(종목코드)로 불러도 동작하도록 남겨 둔다 - 국내 CLI에서 그렇게 쓴다
+    if isinstance(row, str):
+        universe = load_universe()
+        match = universe[universe["종목코드"] == row]
+        if match.empty:
+            raise ValueError(f"{row}는 분석 대상에 없습니다.")
+        row = match.iloc[0]
+
+    country = row.get("국가") or markets.KOREA
+    code = row["종목코드"]
     needed = PERSPECTIVES[perspective]["데이터"]
     context: dict = {}
+
     if "동종업계" in needed:
         context["universe"] = load_universe()
     if "기술" in needed:
-        # 일목균형표는 78거래일, 120일선은 120거래일이 필요해 1년치를 받는다
-        context["tech"] = technical_summary(fetch_price_history(stock_code, pages=25))
-    if "뉴스" in needed:
-        context["news"] = fetch_news(stock_code)
-    if "공시" in needed:
-        context["disclosures"] = fetch_important(stock_code)
+        try:
+            prices = markets.price_history(country, code, row.get("조회코드"))
+            context["tech"] = technical_summary(prices) if not prices.empty else {}
+        except Exception as exc:
+            print(f"[시세 조회 실패] {code}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            context["tech"] = {}
+    if "뉴스" in needed and markets.has_news(country):
+        from src.collectors.news_collector import fetch_news
+
+        context["news"] = fetch_news(code)
+    if "공시" in needed and markets.has_disclosure(country):
+        from src.api.disclosure import fetch_important
+
+        context["disclosures"] = fetch_important(code)
+
     return context
+
+
+def technical_summary(prices: pd.DataFrame) -> dict:
+    from src.collectors.news_collector import technical_summary as summarize
+
+    return summarize(prices)
 
 
 if __name__ == "__main__":
@@ -402,13 +488,14 @@ if __name__ == "__main__":
     view = args[1] if len(args) > 1 else "종합"
     size = args[2] if len(args) > 2 else "압축형"
 
-    # 업종이 붙은 표를 써야 동종업계 비교 블록이 채워진다
+    # 국내·해외가 합쳐진 표를 써야 동종업계 비교 블록이 채워진다
     df = load_universe()
     match = df[df["종목코드"] == code]
     if match.empty:
         sys.exit(f"{code}는 분석 대상에 없습니다.")
 
-    out = analyze(match.iloc[0], view, size, force=force_new, **gather_context(code, view))
+    row = match.iloc[0]
+    out = analyze(row, view, size, force=force_new, **gather_context(row, view))
     report = out["리포트"]
 
     print(f"■ {out['종목명']} | {view} · {size} | {out['모델']}")
