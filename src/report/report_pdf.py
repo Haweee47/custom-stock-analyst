@@ -19,7 +19,10 @@ from reportlab.pdfbase.ttfonts import TTFont
 from xhtml2pdf import pisa
 from xhtml2pdf.default import DEFAULT_FONT
 
-from src.report.report_view import _growth, _num, _signed, won
+from src.analysis.money import money
+from src.analysis.money import price as money_price
+from src.analysis.money import unit_of as money_unit
+from src.report.report_view import VALUATION_FIELDS, _growth, _num, _signed, shares
 
 ROOT = Path(__file__).resolve().parents[2]
 FONT_DIR = ROOT / "assets" / "fonts"
@@ -131,21 +134,31 @@ def _kv(pairs: list[tuple[str, str]]) -> str:
     return f'<table class="kv">{rows}</table>'
 
 
+def _currency_of(row: pd.Series) -> str:
+    value = row.get("통화")
+    return "KRW" if value is None or pd.isna(value) else str(value)
+
+
 def _yearly(row: pd.Series) -> str:
     base = row.get("기준연도")
     if pd.isna(base):
         return ""
     base = int(base)
+    unit = money_unit(_currency_of(row))
     suffixes = ["_전전기", "_전기", ""]
     head = "".join(f"<th>{base - 2 + i}</th>" for i in range(3))
 
     body = ""
     for account in ["매출액", "영업이익", "당기순이익"]:
         values = [row.get(f"{account}{s}") for s in suffixes]
+        if all(pd.isna(v) for v in values):
+            continue
         cells = "".join(f"<td>{_num(v, '', 1e8)}</td>" for v in values)
         body += f'<tr><td class="l">{account}</td>{cells}<td>{_growth(values[2], values[1])}</td></tr>'
 
-    return f"""<div class="boxhead">요약 실적 (억원)</div>
+    if not body:
+        return ""
+    return f"""<div class="boxhead">요약 실적 (억{unit})</div>
 <table class="yr"><tr><th class="l">구분</th>{head}<th>전년비</th></tr>{body}</table>"""
 
 
@@ -159,22 +172,28 @@ def build_html(
     report = result["리포트"]
     date = result["생성시각"][:10].replace("-", ".")
 
+    currency = _currency_of(row)
+    unit = money_unit(currency)
+
     price = [
-        ("현재주가", _num(row.get("현재가"), "원")),
-        ("시가총액", won(row.get("시가총액"))),
-        ("발행주식수", _num(row.get("상장주식수"), "천주", 1e3)),
-        ("외국인비율", _num(row.get("외국인비율"), "%", digits=2)),
+        ("현재주가", money_price(row.get("현재가"), currency, empty="—")),
+        ("시가총액", money(row.get("시가총액"), currency, empty="—")),
     ]
+    if pd.notna(row.get("상장주식수")):
+        price.append(("발행주식수", shares(row.get("상장주식수"))))
+    if pd.notna(row.get("외국인비율")):
+        price.append(("외국인비율", _num(row.get("외국인비율"), "%", digits=2)))
     if tech:
         price += [
-            ("1년 최고", _num(tech.get("기간고가"), "원")),
-            ("1년 최저", _num(tech.get("기간저가"), "원")),
+            ("1년 최고", _num(tech.get("기간고가"), unit)),
+            ("1년 최저", _num(tech.get("기간저가"), unit)),
         ]
+
+    # 시장마다 제공되는 지표가 다르다. 값이 없는 줄은 표에 올리지 않는다.
     valuation = [
-        ("PER", _num(row.get("PER"), "배", digits=2)),
-        ("ROE", _num(row.get("ROE_계산"), "%", digits=2)),
-        ("부채비율", _num(row.get("부채비율"), "%", digits=2)),
-        ("영업이익률", _num(row.get("영업이익률"), "%", digits=2)),
+        (label, _num(row.get(key), fmt_unit, digits=2))
+        for key, label, fmt_unit in VALUATION_FIELDS
+        if pd.notna(row.get(key))
     ]
 
     side = f'<div class="boxhead">주가 정보</div>{_kv(price)}'

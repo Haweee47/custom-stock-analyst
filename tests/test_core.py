@@ -17,6 +17,7 @@ from src.api.disclosure import _score  # noqa: E402
 from src.analysis.screens import SCREENS, apply_screens  # noqa: E402
 from src.collectors.indicators import bollinger, ichimoku, rsi  # noqa: E402
 from src.report.report_view import won  # noqa: E402
+from src.report.report_view import shares as share_count  # noqa: E402
 from src.analysis import peer  # noqa: E402
 from src.analysis.money import money as money_of  # noqa: E402
 from src.analysis.money import price as price_of  # noqa: E402
@@ -686,3 +687,28 @@ class TestMarketRegistry:
         for exchanges in MARKETS.values():
             for exchange in exchanges:
                 assert exchange in EXCHANGE_LABELS, f"{exchange} 한글 이름이 없다"
+
+
+class TestShareCount:
+    """상장주식수는 수집 시점에 이미 천주 단위다. 표시할 때 또 나누면 1,000배 작아진다."""
+
+    @pytest.mark.parametrize(
+        "thousands,expected",
+        [
+            (5_846_279, "58억 4,627만주"),  # 삼성전자. 5,846천주로 나오던 값
+            (728_002, "7억 2,800만주"),
+            (1_500, "150만주"),
+            (3, "3,000주"),
+        ],
+    )
+    def test_주식수_표기(self, thousands, expected):
+        assert share_count(thousands) == expected
+
+    def test_결측(self):
+        assert share_count(None) == "—"
+        assert share_count(float("nan")) == "—"
+
+    def test_시총과_앞뒤가_맞는다(self):
+        # 상장주식수 × 주가 ≈ 시가총액이어야 한다
+        thousands, price, cap = 5_846_279, 255_500, 1_493_724_200_000_000
+        assert abs(thousands * 1_000 * price - cap) / cap < 0.01

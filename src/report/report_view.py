@@ -187,6 +187,25 @@ def won(value) -> str:
     return f"{jo:,}조 {rest:,}억원" if rest else f"{jo:,}조원"
 
 
+def shares(value) -> str:
+    """상장주식수. 수집기가 이미 천주 단위로 저장하므로 다시 나누면 안 된다.
+
+    표시할 때 한 번 더 1,000으로 나누는 바람에 삼성전자 발행주식수가
+    5,846천주(실제 58억 주)로 나오고 있었다.
+    """
+    if value is None or pd.isna(value):
+        return "—"
+
+    count = int(round(float(value) * 1_000))
+    if count >= 10**8:
+        eok, rest = divmod(count, 10**8)
+        man = rest // 10**4
+        return f"{eok:,}억 {man:,}만주" if man else f"{eok:,}억주"
+    if count >= 10**4:
+        return f"{count // 10**4:,}만주"
+    return f"{count:,}주"
+
+
 def _signed(value) -> str:
     if value is None or pd.isna(value):
         return "—"
@@ -296,12 +315,10 @@ def metrics_html(row: pd.Series, perf: dict | None, tech: dict | None) -> str:
         ("현재주가", money_price(row.get("현재가"), currency, empty="—")),
         ("시가총액", money(row.get("시가총액"), currency, empty="—")),
     ]
-    for label, key, fmt_unit, scale in [
-        ("발행주식수", "상장주식수", "천주", 1e3),
-        ("외국인비율", "외국인비율", "%", 1.0),
-    ]:
-        if pd.notna(row.get(key)):
-            price.append((label, _num(row.get(key), fmt_unit, scale, digits=2 if scale == 1.0 else 0)))
+    if pd.notna(row.get("상장주식수")):
+        price.append(("발행주식수", shares(row.get("상장주식수"))))
+    if pd.notna(row.get("외국인비율")):
+        price.append(("외국인비율", _num(row.get("외국인비율"), "%", digits=2)))
     if tech:
         price += [
             ("1년 최고", _num(tech.get("기간고가"), unit)),
