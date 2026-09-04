@@ -67,6 +67,26 @@ def update_sectors() -> str:
     return f"{len(result):,}개 종목 업종 매핑"
 
 
+def update_overseas_prices() -> str:
+    """해외 시세만 갈아 끼운다. 목록 API 68회면 끝나서 매일 돌려도 부담이 없다."""
+    from src.collectors.overseas_collector import refresh_prices
+
+    updated = refresh_prices("미국")
+    if not updated:
+        raise RuntimeError("해외 종목 표가 없습니다. --full로 먼저 수집하세요.")
+    return f"미국 {updated:,}개 종목 시세 갱신"
+
+
+def update_overseas_full() -> str:
+    """해외 재무까지 새로 받는다. 종목마다 1회씩이라 6,775회, 55분쯤 걸린다."""
+    from src.collectors.overseas_collector import collect, save
+
+    result = collect("미국")
+    save(result, "미국")
+    filled = int(result["매출액"].notna().sum())
+    return f"미국 {len(result):,}개 종목 (재무 확보 {filled:,}개)"
+
+
 def update_disclosures() -> str:
     from src.collectors.disclosure_batch import collect, save
 
@@ -76,9 +96,14 @@ def update_disclosures() -> str:
     return f"{len(result):,}개 종목 (중대 공시 {major}개)"
 
 
+# (이름, 함수, --quick에도 도는가)
+# 재무는 분기마다만 바뀌므로 매일 돌리지 않는다. 국내 재무는 DART 2,655회,
+# 해외 재무는 6,775회라 둘 다 무겁다.
 STEPS = [
     ("시세", update_prices, True),
+    ("해외시세", update_overseas_prices, True),
     ("재무", update_financials, False),
+    ("해외재무", update_overseas_full, False),
     ("업종", update_sectors, False),
     ("공시", update_disclosures, True),
 ]

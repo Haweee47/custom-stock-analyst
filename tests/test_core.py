@@ -614,3 +614,29 @@ class TestLengthLimit:
         # 전체는 92건 남았지만 상세형은 2건뿐이다
         assert limiter.remaining_today() == limiter.DAILY_LIMIT - 8
         assert limiter.remaining_today("상세형") == 2
+
+
+class TestMarketMerge:
+    """국내와 해외를 합칠 때 공시 열이 밀려나 국내 공시 필터가 죽은 적이 있다."""
+
+    def test_공시열을_미리_만들지_않는다(self):
+        # markets가 '공시성격'을 미리 채우면, 뒤에서 공시 표를 merge할 때
+        # 이름이 겹쳐 '공시성격_공시'로 밀려나고 국내 공시가 통째로 사라진다.
+        from src.collectors import markets
+
+        universe = markets.load_all()
+        if universe.empty:
+            pytest.skip("수집된 데이터가 없습니다")
+        assert "공시성격" not in universe.columns
+
+    def test_국가별로_쓸_수_있는_것이_다르다(self):
+        from src.collectors import markets
+
+        assert "ROE_계산" in markets.available_metrics(markets.KOREA)
+        assert "ROE_계산" not in markets.available_metrics("미국주식")
+
+        assert markets.has_disclosure(markets.KOREA)
+        assert not markets.has_disclosure("미국주식")
+
+        assert "이슈·트렌드" in markets.available_perspectives(markets.KOREA)
+        assert "이슈·트렌드" not in markets.available_perspectives("미국주식")

@@ -152,10 +152,9 @@ def load_all() -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
 
-    merged = pd.concat(frames, ignore_index=True, sort=False)
-    merged["공시성격"] = merged.get("공시성격", pd.Series(index=merged.index, dtype=object))
-    merged["공시성격"] = merged["공시성격"].fillna("해당 없음")
-    return merged
+    # 공시는 여기서 채우지 않는다. 미리 열을 만들어 두면 나중에 공시 표를 merge할 때
+    # 이름이 겹쳐 '공시성격_공시'로 밀려나고, 국내 공시 필터가 통째로 죽는다.
+    return pd.concat(frames, ignore_index=True, sort=False)
 
 
 def available_metrics(country: str) -> list[str]:

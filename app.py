@@ -58,6 +58,21 @@ st.set_page_config(page_title="리포트 셀프바", page_icon="📈", layout="w
 # 사이드바에 보여줄 순서. 국내를 먼저 둔다.
 COUNTRY_ORDER = ["국내주식", "미국주식"]
 
+# 시가총액 구간 (억원, 원화 환산). (하한, 상한) - None은 끝이 없다는 뜻.
+#
+# 예전에는 0부터 최대값까지 슬라이더 하나로 받았는데, 엔비디아(7,438조원) 때문에
+# 눈금이 74만 칸이 됐다. 종목 중앙값이 슬라이더 폭의 0.01% 지점에 몰려서 손으로는
+# 맞출 수가 없었다. 사람이 실제로 생각하는 단위인 '대형주/소형주'로 나눈다.
+CAP_BUCKETS = {
+    "전체": (None, None),
+    "초대형 (10조 이상)": (100_000, None),
+    "대형 (1조~10조)": (10_000, 100_000),
+    "중형 (3천억~1조)": (3_000, 10_000),
+    "소형 (1천억~3천억)": (1_000, 3_000),
+    "초소형 (1천억 미만)": (None, 1_000),
+    "직접 입력": (None, None),
+}
+
 
 @st.cache_data
 def get_data() -> pd.DataFrame:
@@ -275,8 +290,10 @@ def main() -> None:
 
     st.title("리포트 셀프바")
     stamp = dataset_meta.oldest_date()
+    counts = df["국가"].value_counts()
+    scope = " · ".join(f"{name} {int(counts.get(name, 0)):,}개" for name in COUNTRY_ORDER if name in counts)
     st.caption(
-        "종목도, 관점도 골라 담으세요 · 코스피·코스닥 전 종목"
+        f"종목도, 관점도 골라 담으세요 · {scope}"
         + (f" · {stamp} 종가 기준" if stamp else "")
     )
     st.caption(DISCLAIMER)
@@ -346,50 +363,37 @@ def main() -> None:
         caps = pool["시가총액_원화"].dropna() / 1e8
         cap_ceiling = int(caps.max()) if not caps.empty else 0
 
-        # 시총 상한이 나라마다 다르므로 키에 국가를 붙인다. 하나로 두면 미국에서
-        # 고른 범위가 국내로 넘어와 슬라이더 범위를 벗어난다.
-        range_key = f"cap_range_{country}"
-        low_key, high_key = f"cap_low_{country}", f"cap_high_{country}"
-        if range_key not in st.session_state:
-            st.session_state[range_key] = (0, cap_ceiling)
-
-        st.markdown("**시가총액 (억원, 원화 환산)**")
-        st.slider(
-            "시가총액 범위",
-            min_value=0,
-            max_value=cap_ceiling,
-            step=100,
-            key=range_key,
-            label_visibility="collapsed",
+        bucket_counts = {
+            name: int(((caps >= (low or 0)) & (caps < (high or float("inf")))).sum())
+            for name, (low, high) in CAP_BUCKETS.items()
+            if name not in ("전체", "직접 입력")
+        }
+        bucket = st.selectbox(
+            "시가총액",
+            list(CAP_BUCKETS),
+            format_func=lambda name: (
+                name if name not in bucket_counts else f"{name} · {bucket_counts[name]:,}개"
+            ),
+            help="원화로 환산한 금액 기준입니다.",
         )
 
-        def _sync_from_inputs() -> None:
-            low = st.session_state[low_key]
-            high = st.session_state[high_key]
-            st.session_state[range_key] = (min(low, high), max(low, high))
+        if bucket == "직접 입력":
+            low_col, high_col = st.columns(2)
+            cap_min = low_col.number_input(
+                "최소(억원)", min_value=0, max_value=cap_ceiling, value=0, step=1_000,
+                key=f"cap_low_{country}",
+            )
+            cap_max = high_col.number_input(
+                "최대(억원)", min_value=0, max_value=cap_ceiling, value=cap_ceiling, step=1_000,
+                key=f"cap_high_{country}",
+            )
+            if cap_min > cap_max:
+                cap_min, cap_max = cap_max, cap_min
+        else:
+            low, high = CAP_BUCKETS[bucket]
+            cap_min = low or 0
+            cap_max = high if high is not None else cap_ceiling
 
-        low_col, high_col = st.columns(2)
-        low_col.number_input(
-            "최소",
-            min_value=0,
-            max_value=cap_ceiling,
-            value=st.session_state[range_key][0],
-            step=100,
-            key=low_key,
-            on_change=_sync_from_inputs,
-        )
-        high_col.number_input(
-            "최대",
-            min_value=0,
-            max_value=cap_ceiling,
-            value=st.session_state[range_key][1],
-            step=100,
-            key=high_key,
-            on_change=_sync_from_inputs,
-        )
-
-        cap_min, cap_max = st.session_state[range_key]
-        st.caption(f"{cap_min:,}억원 ~ {cap_max:,}억원")
         if not domestic:
             rate, fresh = markets.fx_rate("USD")
             st.caption(
@@ -446,11 +450,13 @@ def main() -> None:
         st.warning("조건에 맞는 종목이 없습니다. 필터를 넓혀보세요.")
         return
 
+    # 종목이 6,775개까지 늘어 iterrows로 라벨을 만들면 화면을 건드릴 때마다
+    # 0.3초씩 먹는다. 벡터 연산으로 바꿔 10배 이상 줄였다.
     options = view.sort_values("시가총액_원화", ascending=False)
-    labels = {
-        f"{'⚠ ' if r['공시성격'] == '중대 공시' else ''}{r['종목명']} ({r['종목코드']})": r["종목코드"]
-        for _, r in options.iterrows()
-    }
+    mark = (options["공시성격"] == "중대 공시").map({True: "⚠ ", False: ""})
+    labels = dict(
+        zip(mark + options["종목명"].fillna("") + " (" + options["종목코드"] + ")", options["종목코드"])
+    )
     picked = st.sidebar.selectbox("종목 선택", list(labels))
     row = pool[pool["종목코드"] == labels[picked]].iloc[0]
 
