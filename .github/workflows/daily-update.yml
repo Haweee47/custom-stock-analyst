@@ -61,11 +61,16 @@ jobs:
           fi
 
       - name: 리포트 캐시 워밍
-        # 캐시가 7일 뒤 만료되므로 매일 돌려도 하루 4~5건만 새로 만든다.
+        # 앱에서 처음 보이는 관점만 채운다. 캐시가 7일 뒤 만료되므로 두 시장을
+        # 합쳐도 하루 8~9건 정도만 새로 만들어진다(약 27원).
+        # 일일 상한은 warmup이 알아서 지키므로 여기서 따로 막지 않는다.
         # 키가 없으면 조용히 건너뛴다. 수집만으로도 커밋할 값어치가 있다.
         if: env.GEMINI_API_KEY != '' && inputs.warmup_top != '0'
         continue-on-error: true
-        run: python warmup.py --top "${{ inputs.warmup_top || '30' }}"
+        run: |
+          TOP="${{ inputs.warmup_top || '30' }}"
+          python warmup.py --country 국내주식 --top "$TOP"
+          python warmup.py --country 미국주식 --top "$TOP"
 
       - name: 변경분 커밋
         id: commit

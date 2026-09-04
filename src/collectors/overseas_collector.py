@@ -34,12 +34,21 @@ RETRIES = 3
 BACKOFF = 2
 PAGE_SIZE = 100
 
-# 나라별로 어느 거래소를 담을지. 일본(TOKYO)과 중국(SHANGHAI)도 같은 방식으로 열린다.
+# 나라별로 어느 거래소를 담을지. 전부 같은 API로 열린다.
+# 홍콩은 목록 API가 400을 뱉어 개별 조회만 되므로 아직 넣지 않았다.
 MARKETS = {
     "미국": ["NASDAQ", "NYSE"],
+    "일본": ["TOKYO"],
+    "중국": ["SHANGHAI", "SHENZHEN"],
 }
 
-EXCHANGE_LABELS = {"NASDAQ": "나스닥", "NYSE": "뉴욕"}
+EXCHANGE_LABELS = {
+    "NASDAQ": "나스닥",
+    "NYSE": "뉴욕",
+    "TOKYO": "도쿄",
+    "SHANGHAI": "상해",
+    "SHENZHEN": "심천",
+}
 
 # 재무 응답의 계정명 → 우리 컬럼명. 없는 계정은 그대로 비워 둔다.
 ACCOUNTS = {
@@ -307,8 +316,12 @@ if __name__ == "__main__":
     if sys.stdout.encoding.lower() != "utf-8":
         sys.stdout.reconfigure(encoding="utf-8")
 
-    limit = int(sys.argv[1]) if len(sys.argv) > 1 else None
-    result = collect("미국", limit=limit)
-    out = save(result, "미국")
+    country = sys.argv[1] if len(sys.argv) > 1 else "미국"
+    limit = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    if country not in MARKETS:
+        sys.exit(f"모르는 시장입니다: {country} (가능: {', '.join(MARKETS)})")
+
+    result = collect(country, limit=limit)
+    out = save(result, country)
     filled = int(result["매출액"].notna().sum()) if "매출액" in result else 0
     print(f"{len(result):,}개 종목 저장 (재무 확보 {filled:,}개): {out}")

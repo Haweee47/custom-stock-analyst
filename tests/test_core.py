@@ -640,3 +640,49 @@ class TestMarketMerge:
 
         assert "이슈·트렌드" in markets.available_perspectives(markets.KOREA)
         assert "이슈·트렌드" not in markets.available_perspectives("미국주식")
+
+
+class TestExchangeRate:
+    """엔화 고시는 100엔 기준이다. 1엔당으로 착각하면 일본 종목 시총이 100배가 된다."""
+
+    def test_엔화는_100단위_고시를_풀어준다(self):
+        from src.collectors import markets
+
+        assert markets.FX_QUOTE_UNITS["JPY"] == 100
+        # 862.25원/100엔 → 8.6225원/엔
+        assert abs(862.25 / markets.FX_QUOTE_UNITS["JPY"] - 8.6225) < 1e-6
+
+    def test_달러와_위안은_1단위_고시다(self):
+        from src.collectors import markets
+
+        assert markets.FX_QUOTE_UNITS.get("USD", 1) == 1
+        assert markets.FX_QUOTE_UNITS.get("CNY", 1) == 1
+
+    def test_원화는_환산하지_않는다(self):
+        from src.collectors import markets
+
+        assert markets.fx_rate("KRW") == (1.0, True)
+
+    def test_대체값도_1단위_기준이다(self):
+        # 폴백이 100엔 기준이면 환율 조회 실패 시 조용히 100배가 된다
+        from src.collectors import markets
+
+        assert 5 < markets.FX_FALLBACK["JPY"] < 15
+        assert 100 < markets.FX_FALLBACK["CNY"] < 300
+
+
+class TestMarketRegistry:
+    def test_해외_시장은_같은_지표_구성을_쓴다(self):
+        from src.collectors import markets
+
+        for label in markets.COUNTRIES.values():
+            assert markets.available_metrics(label) == markets.OVERSEAS_METRICS
+            assert "이슈·트렌드" not in markets.available_perspectives(label)
+            assert not markets.has_disclosure(label)
+
+    def test_거래소가_국가에_모두_매핑되어_있다(self):
+        from src.collectors.overseas_collector import EXCHANGE_LABELS, MARKETS
+
+        for exchanges in MARKETS.values():
+            for exchange in exchanges:
+                assert exchange in EXCHANGE_LABELS, f"{exchange} 한글 이름이 없다"

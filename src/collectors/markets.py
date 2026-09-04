@@ -26,19 +26,27 @@ FX_PATH = PROCESSED_DIR / "fx_rates.json"
 FX_URL = "https://api.stock.naver.com/marketindex/exchange/FX_{code}KRW"
 FX_TTL_HOURS = 12
 
-# 환율을 못 받았을 때 쓰는 값. 정렬 기준이 통째로 무너지는 것보다는 낫지만,
-# 화면에는 '환율 갱신 실패'를 알려야 한다.
-FX_FALLBACK = {"USD": 1350.0, "JPY": 9.0, "CNY": 190.0, "HKD": 173.0}
+# 환율을 못 받았을 때 쓰는 값(1단위당 원). 정렬 기준이 통째로 무너지는 것보다는
+# 낫지만, 화면에는 '환율 갱신 실패'를 알려야 한다.
+FX_FALLBACK = {"USD": 1350.0, "JPY": 8.6, "CNY": 200.0, "HKD": 172.0}
+
+# 고시 단위. 원화 고시는 관행상 엔화만 100단위로 적는다(862.25원 = 100엔).
+# 이걸 1엔당으로 착각하면 일본 종목 시가총액이 100배가 되어 전부 최상위로 올라간다.
+FX_QUOTE_UNITS = {"JPY": 100}
 
 KOREA = "국내주식"
 COUNTRIES = {
     "미국": "미국주식",
+    "일본": "일본주식",
+    "중국": "중국주식",
 }
 
 # 국가별로 쓸 수 있는 재무 지표. 화면과 프롬프트가 이걸 보고 항목을 정한다.
+# 해외는 어느 시장이든 자산·부채·자본총계가 없어 지표 구성이 같다
+OVERSEAS_METRICS = ["PER", "PBR", "영업이익률", "ROA"]
 METRICS = {
     KOREA: ["PER", "부채비율", "영업이익률", "ROE_계산"],
-    "미국주식": ["PER", "PBR", "영업이익률", "ROA"],
+    **{label: OVERSEAS_METRICS for label in COUNTRIES.values()},
 }
 
 # 공시는 DART 기반, 뉴스는 네이버 국내 금융 기사라 둘 다 국내에만 붙는다
@@ -48,9 +56,10 @@ HAS_NEWS = {KOREA}
 # 국가별로 고를 수 있는 분석 관점.
 # '이슈·트렌드'는 뉴스와 공시가 재료인데 해외는 둘 다 없다. 재료 없이 관점만
 # 열어 두면 재무 얘기만 하는 엉뚱한 리포트가 나오므로 아예 빼는 편이 정직하다.
+OVERSEAS_PERSPECTIVES = ["펀더멘탈", "기술적", "종합"]
 PERSPECTIVES = {
     KOREA: ["펀더멘탈", "기술적", "이슈·트렌드", "종합"],
-    "미국주식": ["펀더멘탈", "기술적", "종합"],
+    **{label: OVERSEAS_PERSPECTIVES for label in COUNTRIES.values()},
 }
 
 
@@ -87,7 +96,8 @@ def fx_rate(currency: str = "USD", force: bool = False) -> tuple[float, bool]:
             timeout=10,
         )
         response.raise_for_status()
-        rate = float(response.json()["exchangeInfo"]["calcPrice"])
+        quoted = float(response.json()["exchangeInfo"]["calcPrice"])
+        rate = quoted / FX_QUOTE_UNITS.get(currency, 1)
         cache[currency] = {"환율": rate, "갱신": datetime.now().isoformat(timespec="seconds")}
         try:
             PROCESSED_DIR.mkdir(parents=True, exist_ok=True)

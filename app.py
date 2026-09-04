@@ -56,7 +56,7 @@ TEXT_MUTED = "#52514e"
 st.set_page_config(page_title="리포트 셀프바", page_icon="📈", layout="wide")
 
 # 사이드바에 보여줄 순서. 국내를 먼저 둔다.
-COUNTRY_ORDER = ["국내주식", "미국주식"]
+COUNTRY_ORDER = ["국내주식", "미국주식", "일본주식", "중국주식"]
 
 # 시가총액 구간 (억원, 원화 환산). (하한, 상한) - None은 끝이 없다는 뜻.
 #

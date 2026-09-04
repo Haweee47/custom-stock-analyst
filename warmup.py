@@ -7,10 +7,11 @@
 첫 화면이 비어 보이지 않게 하는 것이 목적이고, 부수 효과로 비용도 준다.
 캐시에 있으면 방문자가 열어도 API를 호출하지 않기 때문이다.
 
-    python warmup.py                    상위 30개, 앱 기본값(펀더멘탈·압축형)
-    python warmup.py --top 50           상위 50개
-    python warmup.py --view 종합        관점 지정
-    python warmup.py --dry-run          쓸 돈만 계산하고 끝낸다
+    python warmup.py                          상위 30개, 앱 기본값(펀더멘탈·압축형)
+    python warmup.py --top 50                 상위 50개
+    python warmup.py --views 펀더멘탈 종합    관점 여러 개
+    python warmup.py --country 미국주식       시장 지정
+    python warmup.py --dry-run                쓸 돈만 계산하고 끝낸다
 
 만든 뒤에는 커밋해야 배포에 반영된다.
 """
@@ -49,8 +50,12 @@ def cost_of(tokens: dict) -> float:
     ) * EXCHANGE
 
 
-def targets(top: int, view: str, size: str, country: str):
-    """시가총액 상위 종목 중 아직 캐시가 없는 것만 고른다."""
+def targets(top: int, views: list[str], size: str, country: str):
+    """시총 상위 종목 × 관점 조합 중 아직 캐시가 없는 것만 고른다.
+
+    관점을 여러 개 받는다. 하나만 채우면 방문자가 관점을 바꾸는 순간 캐시가
+    비어서 그때부터 유료 생성이 걸린다.
+    """
     universe = load_universe()
     pool = universe[universe["국가"] == country] if "국가" in universe.columns else universe
     if pool.empty:
@@ -61,11 +66,13 @@ def targets(top: int, view: str, size: str, country: str):
     ranked = pool.dropna(subset=[key]).sort_values(key, ascending=False).head(top)
 
     todo, cached = [], 0
+    # 종목을 바깥 고리에 두면 상한에 걸려 끊겨도 상위 종목은 관점이 고루 채워진다
     for _, row in ranked.iterrows():
-        if load_cached(row["종목코드"], view, size):
-            cached += 1
-        else:
-            todo.append(row)
+        for view in views:
+            if load_cached(row["종목코드"], view, size):
+                cached += 1
+            else:
+                todo.append((row, view))
     return universe, todo, cached
 
 
@@ -73,8 +80,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="리포트 캐시를 미리 채운다")
     parser.add_argument("--top", type=int, default=30, help="시총 상위 몇 개까지 (기본 30)")
     parser.add_argument(
-        "--view", default=next(iter(PERSPECTIVES)), choices=list(PERSPECTIVES),
-        help="분석 관점 (기본값은 앱에서 처음 선택되는 관점)",
+        "--views", nargs="+", default=[next(iter(PERSPECTIVES))], choices=list(PERSPECTIVES),
+        metavar="관점",
+        help="분석 관점 (여러 개 가능. 기본값은 앱에서 처음 선택되는 관점)",
     )
     parser.add_argument(
         "--size", default=next(iter(LENGTHS)), choices=list(LENGTHS), help="분량"
@@ -86,15 +94,20 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="비용만 계산하고 끝낸다")
     args = parser.parse_args()
 
-    if args.view not in markets.available_perspectives(args.country):
+    allowed = markets.available_perspectives(args.country)
+    unusable = [v for v in args.views if v not in allowed]
+    if unusable:
         raise SystemExit(
-            f"{args.country}에서는 '{args.view}' 관점을 쓸 수 없습니다. "
-            f"가능한 관점: {', '.join(markets.available_perspectives(args.country))}"
+            f"{args.country}에서는 {', '.join(unusable)} 관점을 쓸 수 없습니다. "
+            f"가능한 관점: {', '.join(allowed)}"
         )
 
-    print(f"캐시 워밍 — {args.country} 시총 상위 {args.top}개 · {args.view} · {args.size}")
+    print(
+        f"캐시 워밍 — {args.country} 시총 상위 {args.top}개 · "
+        f"{' + '.join(args.views)} · {args.size}"
+    )
 
-    universe, todo, cached = targets(args.top, args.view, args.size, args.country)
+    universe, todo, cached = targets(args.top, args.views, args.size, args.country)
     print(f"이미 있음 {cached}건 / 만들 것 {len(todo)}건")
 
     if not todo:
@@ -114,14 +127,14 @@ def main() -> int:
     made, spent, failed = 0, 0.0, []
     started = time.time()
 
-    for index, row in enumerate(todo, start=1):
-        label = f"{row['종목명']} ({row['종목코드']})"
+    for index, (row, view) in enumerate(todo, start=1):
+        label = f"{row['종목명']} ({row['종목코드']}) {view}"
         print(f"[{index}/{len(todo)}] {label} ... ", end="", flush=True)
         try:
-            context = gather_context(row, args.view)
+            context = gather_context(row, view)
             # universe는 gather_context가 이미 넣어 주지만, 관점에 따라 빠질 수 있다
             context.setdefault("universe", universe)
-            result = analyze(row, args.view, args.size, batch=True, **context)
+            result = analyze(row, view, args.size, batch=True, **context)
 
             price = cost_of(result["토큰"]) if "토큰" in result else 0.0
             spent += price
