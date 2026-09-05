@@ -25,8 +25,7 @@ OUT = ROOT / "docs" / "기획서_리포트셀프바.pdf"
 URL = "custom-stock-analyst.streamlit.app"
 REPO = "github.com/Haweee47/custom-stock-analyst"
 
-# 제출 전에 팀명·작성자를 여기에 채운다
-TEAM = "리포트 셀프바"
+TEAM = "숑이"
 
 
 def count_tests() -> int:
