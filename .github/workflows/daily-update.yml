@@ -69,8 +69,9 @@ jobs:
         continue-on-error: true
         run: |
           TOP="${{ inputs.warmup_top || '30' }}"
-          python warmup.py --country 국내주식 --top "$TOP"
-          python warmup.py --country 미국주식 --top "$TOP"
+          for COUNTRY in 국내주식 미국주식 일본주식 중국주식; do
+            python warmup.py --country "$COUNTRY" --top "$TOP" || true
+          done
 
       - name: 변경분 커밋
         id: commit

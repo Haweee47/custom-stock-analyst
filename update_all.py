@@ -68,23 +68,38 @@ def update_sectors() -> str:
 
 
 def update_overseas_prices() -> str:
-    """해외 시세만 갈아 끼운다. 목록 API 68회면 끝나서 매일 돌려도 부담이 없다."""
-    from src.collectors.overseas_collector import refresh_prices
+    """해외 시세만 갈아 끼운다. 목록 API 몇십 회면 끝나서 매일 돌려도 부담이 없다.
 
-    updated = refresh_prices("미국")
-    if not updated:
-        raise RuntimeError("해외 종목 표가 없습니다. --full로 먼저 수집하세요.")
-    return f"미국 {updated:,}개 종목 시세 갱신"
+    수집해 둔 시장을 전부 돈다. 시장 이름을 여기에 박아 두면 새 시장을 추가할 때마다
+    빠뜨린다(실제로 일본·중국을 넣고도 이 단계는 미국만 갱신하고 있었다).
+    """
+    from src.collectors.overseas_collector import MARKETS, path_for, refresh_prices
+
+    notes, missing = [], []
+    for country in MARKETS:
+        if not path_for(country).exists():
+            missing.append(country)
+            continue
+        updated = refresh_prices(country)
+        notes.append(f"{country} {updated:,}개")
+
+    if not notes:
+        raise RuntimeError("해외 종목 표가 하나도 없습니다. --full로 먼저 수집하세요.")
+    note = " · ".join(notes) + " 시세 갱신"
+    return note + (f" (미수집: {', '.join(missing)})" if missing else "")
 
 
 def update_overseas_full() -> str:
-    """해외 재무까지 새로 받는다. 종목마다 1회씩이라 6,775회, 55분쯤 걸린다."""
-    from src.collectors.overseas_collector import collect, save
+    """해외 재무까지 새로 받는다. 종목마다 1회씩이라 시장을 다 돌면 두 시간쯤 걸린다."""
+    from src.collectors.overseas_collector import MARKETS, collect, save
 
-    result = collect("미국")
-    save(result, "미국")
-    filled = int(result["매출액"].notna().sum())
-    return f"미국 {len(result):,}개 종목 (재무 확보 {filled:,}개)"
+    notes = []
+    for country in MARKETS:
+        result = collect(country)
+        save(result, country)
+        filled = int(result["매출액"].notna().sum())
+        notes.append(f"{country} {len(result):,}개(재무 {filled:,})")
+    return " · ".join(notes)
 
 
 def update_disclosures() -> str:

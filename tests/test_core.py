@@ -790,3 +790,34 @@ class TestMixedCurrency:
         for currency, group in priced.groupby("통화"):
             ratios = (group["시가총액_원화"] / group["시가총액"]).round(4)
             assert ratios.nunique() == 1, f"{currency}에 환율이 여러 개 적용됐다"
+
+
+class TestBatchCoverage:
+    """시장 이름을 배치 코드에 박아 두면 새 시장을 추가할 때마다 빠뜨린다."""
+
+    def test_해외_배치가_모든_시장을_돈다(self):
+        # 일본·중국을 넣고도 갱신 단계는 미국만 돌던 적이 있다
+        import inspect
+
+        import update_all
+        from src.collectors.overseas_collector import MARKETS
+
+        for function in (update_all.update_overseas_prices, update_all.update_overseas_full):
+            source = inspect.getsource(function)
+            assert "MARKETS" in source, f"{function.__name__}이 시장 목록을 참조하지 않는다"
+            for country in MARKETS:
+                assert f'"{country}"' not in source, (
+                    f"{function.__name__}에 '{country}'가 하드코딩돼 있다"
+                )
+
+    def test_워크플로가_모든_시장을_워밍한다(self):
+        from pathlib import Path
+
+        from src.collectors import markets
+
+        workflow = (
+            Path(__file__).resolve().parents[1] / ".github/workflows/daily-update.yml"
+        ).read_text(encoding="utf-8")
+
+        for label in [markets.KOREA, *markets.COUNTRIES.values()]:
+            assert label in workflow, f"워크플로에 {label} 워밍이 빠졌다"
