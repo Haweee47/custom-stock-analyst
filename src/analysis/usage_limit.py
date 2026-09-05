@@ -11,14 +11,39 @@
 파일과 프로세스 중 큰 값을 오늘 사용량으로 본다.
 """
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 USAGE_PATH = ROOT / "data" / "processed" / "gemini_usage.json"
 
-DAILY_LIMIT = 100
-SESSION_LIMIT = 10
+def _limit_from_env(name: str, default: int) -> int:
+    """운영 중에 코드를 고치지 않고 상한을 조절할 수 있게 한다.
+
+    평소에는 비용을 눌러야 하지만, 사람이 몰리는 기간(심사·시연)에는 상한이
+    먼저 걸려 서비스가 멈추는 쪽이 더 큰 손해다. 배포 환경에서 환경변수만
+    바꾸면 되도록 열어 둔다.
+    """
+    raw = os.getenv(name)
+    if not raw:
+        try:
+            import streamlit as st
+
+            raw = st.secrets.get(name)
+        except Exception:
+            raw = None
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+DAILY_LIMIT = _limit_from_env("GEMINI_DAILY_LIMIT", 100)
+SESSION_LIMIT = _limit_from_env("GEMINI_SESSION_LIMIT", 10)
 
 # 분량별 하루 상한. 상세형은 출력 토큰이 두 배 가까워 1건 5.03원으로 압축형(3.07원)보다
 # 비싸다. 비용의 대부분(76%)이 출력에서 나오므로, 전체 상한과 별개로 긴 리포트만

@@ -118,6 +118,26 @@ def _cache_path(stock_code: str, perspective: str, length: str, country: str | N
     return CACHE_DIR / f"{market_code(country)}_{stock_code}_{perspective}_{length}.json"
 
 
+def ready_reports() -> dict[tuple[str, str], set[tuple[str, str]]]:
+    """지금 바로 볼 수 있는 리포트 목록. {(시장코드, 종목코드): {(관점, 분량)}}
+
+    종목이 17,000개가 넘는데 캐시는 그 일부라, 방문자가 아무거나 누르면 대개
+    '생성' 버튼을 만난다. 어느 종목이 준비돼 있는지 미리 알아야 화면에서
+    안내할 수 있다. 파일 이름만 읽으므로 빠르다.
+    """
+    ready: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    if not CACHE_DIR.exists():
+        return ready
+
+    for path in CACHE_DIR.glob("*.json"):
+        parts = path.stem.split("_")
+        if len(parts) != 4 or parts[0] not in MARKET_CODES.values():
+            continue
+        market, code, perspective, length = parts
+        ready.setdefault((market, code), set()).add((perspective, length))
+    return ready
+
+
 def load_cached(
     stock_code: str, perspective: str, length: str, country: str | None = None
 ) -> dict | None:

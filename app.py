@@ -18,6 +18,8 @@ from src.analysis.gemini_analyzer import (
     analyze,
     gather_context,
     load_cached,
+    market_code,
+    ready_reports,
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES
 from src.analysis.screens import apply_screens, available_screens, screen_counts
@@ -71,6 +73,12 @@ CAP_BUCKETS = {
     "초소형 (1천억 미만)": (None, 1_000),
     "직접 입력": (None, None),
 }
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_ready() -> dict:
+    """바로 볼 수 있는 리포트 목록. 새 리포트가 생기면 1분 안에 반영된다."""
+    return ready_reports()
 
 
 @st.cache_data
@@ -286,6 +294,7 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
 
 def main() -> None:
     df = get_data()
+    ready = get_ready()
 
     st.title("리포트 셀프바")
     stamp = dataset_meta.oldest_date()
@@ -403,6 +412,14 @@ def main() -> None:
             "종목명 검색", placeholder="예: 삼성" if domestic else "예: 애플, NVDA"
         )
 
+        prepared = sum(1 for market, _ in ready if market == market_code(country))
+        ready_only = st.checkbox(
+            f"바로 볼 수 있는 종목만 ({prepared:,}개)",
+            value=False,
+            help="리포트가 이미 만들어져 있어 기다리지 않고 열립니다.",
+            disabled=prepared == 0,
+        )
+
         st.divider()
         age = dataset_meta.days_old()
         line = dataset_meta.summary_line()
@@ -442,6 +459,14 @@ def main() -> None:
                 haystack = haystack + " " + view[column].fillna("")
         view = view[haystack.str.contains(keyword, case=False, na=False)]
 
+    # 종목은 17,000개가 넘는데 리포트가 준비된 건 그중 일부다. 어느 것이 바로
+    # 열리는지 보여 주지 않으면 방문자는 계속 '생성' 버튼만 만나게 된다.
+    prefix = market_code(country)
+    ready_codes = {code for market, code in ready.keys() if market == prefix}
+    is_ready = view["종목코드"].astype(str).isin(ready_codes)
+    if ready_only:
+        view = view[is_ready]
+
     st.sidebar.caption(f"조건에 맞는 종목 {len(view):,}개 / {country} {len(pool):,}개")
     st.sidebar.caption(
         "ETF·ETN·우선주는 재무제표가 없어 분석 대상에서 제외했습니다. 보통주만 다룹니다."
@@ -455,9 +480,13 @@ def main() -> None:
     # 종목이 6,775개까지 늘어 iterrows로 라벨을 만들면 화면을 건드릴 때마다
     # 0.3초씩 먹는다. 벡터 연산으로 바꿔 10배 이상 줄였다.
     options = view.sort_values("시가총액_원화", ascending=False)
-    mark = (options["공시성격"] == "중대 공시").map({True: "⚠ ", False: ""})
+    risky = (options["공시성격"] == "중대 공시").map({True: "⚠ ", False: ""})
+    instant = options["종목코드"].astype(str).isin(ready_codes).map({True: "⚡ ", False: ""})
     labels = dict(
-        zip(mark + options["종목명"].fillna("") + " (" + options["종목코드"] + ")", options["종목코드"])
+        zip(
+            instant + risky + options["종목명"].fillna("") + " (" + options["종목코드"] + ")",
+            options["종목코드"],
+        )
     )
     picked = st.sidebar.selectbox("종목 선택", list(labels))
     row = pool[pool["종목코드"] == labels[picked]].iloc[0]
@@ -539,18 +568,34 @@ def main() -> None:
     if cached:
         render_report(cached, row, prices)
     else:
-        # 상세형은 출력이 길어 비용이 높으므로 하루 상한을 따로 둔다
+        # 이 종목의 다른 관점이 이미 있으면 그리로 안내한다. 상한에 걸렸을 때
+        # '내일 오세요'로 끝내면 방문자가 볼 게 없다.
+        others = sorted(
+            f"{p}·{l}" for p, l in ready.get((market_code(country), str(row["종목코드"])), set())
+        )
+        if others:
+            st.info(f"이 종목은 **{', '.join(others)}** 리포트가 이미 준비돼 있습니다.")
+
+        left = remaining_today(length)
         note = f"오늘 신규 생성 {_usage_today()}/{DAILY_LIMIT}건 사용"
         cap = LENGTH_LIMITS.get(length)
         if cap:
             note += f" · {length} {_usage_today(length)}/{cap}건"
-        note += f" (남은 {remaining_today(length)}건, 이번 접속에서 최대 {SESSION_LIMIT}건)"
+        note += f" (남은 {left}건, 이번 접속에서 최대 {SESSION_LIMIT}건)"
         st.caption(note)
-        if st.button(f"{perspective} 관점으로 리포트 생성", type="primary"):
+
+        if left <= 0:
+            st.warning(
+                "오늘 새로 만들 수 있는 리포트를 모두 사용했습니다. "
+                "사이드바의 **'바로 볼 수 있는 종목만'**을 켜면 이미 만들어진 리포트를 "
+                "지금 보실 수 있습니다."
+            )
+        elif st.button(f"{perspective} 관점으로 리포트 생성", type="primary"):
             try:
                 with st.spinner("데이터를 모으고 리포트를 작성하는 중..."):
                     context = gather_context(row, perspective)
                     result = analyze(row, perspective, length, **context)
+                get_ready.clear()
                 render_report(result, row, prices)
             except (DailyLimitReached, SessionLimitReached) as exc:
                 st.warning(str(exc))

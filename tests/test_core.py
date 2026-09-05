@@ -1003,3 +1003,67 @@ class TestVerifierSigns:
         assert verify_report(report, row, news=news)["통과"]
         # 뉴스를 안 주면 출처를 알 수 없으므로 잡힌다
         assert not verify_report(report, row)["통과"]
+
+
+class TestReadyIndex:
+    """종목이 17,000개인데 리포트는 일부만 있다. 어느 게 바로 열리는지 알아야 안내한다."""
+
+    def test_파일_이름에서_준비된_조합을_읽는다(self, tmp_path, monkeypatch):
+        from src.analysis import gemini_analyzer as module
+
+        monkeypatch.setattr(module, "CACHE_DIR", tmp_path)
+        for name in [
+            "KR_005930_펀더멘탈_압축형.json",
+            "KR_005930_종합_압축형.json",
+            "US_NVDA_펀더멘탈_압축형.json",
+            "엉뚱한이름.json",
+        ]:
+            (tmp_path / name).write_text("{}", encoding="utf-8")
+
+        ready = module.ready_reports()
+        assert ready[("KR", "005930")] == {("펀더멘탈", "압축형"), ("종합", "압축형")}
+        assert ready[("US", "NVDA")] == {("펀더멘탈", "압축형")}
+        # 규칙에 안 맞는 이름은 조용히 무시한다
+        assert len(ready) == 2
+
+    def test_같은_코드라도_시장이_다르면_따로_센다(self, tmp_path, monkeypatch):
+        from src.analysis import gemini_analyzer as module
+
+        monkeypatch.setattr(module, "CACHE_DIR", tmp_path)
+        (tmp_path / "KR_000810_펀더멘탈_압축형.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "CN_000810_펀더멘탈_압축형.json").write_text("{}", encoding="utf-8")
+
+        ready = module.ready_reports()
+        assert ("KR", "000810") in ready and ("CN", "000810") in ready
+
+    def test_캐시가_없어도_깨지지_않는다(self, tmp_path, monkeypatch):
+        from src.analysis import gemini_analyzer as module
+
+        monkeypatch.setattr(module, "CACHE_DIR", tmp_path / "없는폴더")
+        assert module.ready_reports() == {}
+
+
+class TestConfigurableLimits:
+    """사람이 몰리는 기간에는 상한이 먼저 걸려 서비스가 멈추는 쪽이 더 큰 손해다."""
+
+    def test_환경변수로_상한을_올릴_수_있다(self, monkeypatch):
+        import importlib
+
+        from src.analysis import usage_limit as module
+
+        monkeypatch.setenv("GEMINI_DAILY_LIMIT", "400")
+        importlib.reload(module)
+        assert module.DAILY_LIMIT == 400
+
+    def test_이상한_값이면_기본값을_쓴다(self, monkeypatch):
+        import importlib
+
+        from src.analysis import usage_limit as module
+
+        for bad in ("이상한값", "0", "-5", ""):
+            monkeypatch.setenv("GEMINI_DAILY_LIMIT", bad)
+            importlib.reload(module)
+            assert module.DAILY_LIMIT == 100, f"{bad!r}에서 기본값으로 돌아가지 않았다"
+
+        monkeypatch.delenv("GEMINI_DAILY_LIMIT")
+        importlib.reload(module)
