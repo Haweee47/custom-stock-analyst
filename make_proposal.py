@@ -17,12 +17,16 @@ sys.path.insert(0, str(ROOT))
 from src.analysis import peer, trend, verify  # noqa: E402
 from src.analysis.gemini_analyzer import CACHE_DIR  # noqa: E402
 from src.collectors import markets  # noqa: E402
-from src.report.proposal import _rows, render  # noqa: E402
+from src.report.proposal import _rows, kpi, render  # noqa: E402
 
 COVERAGE = ROOT / "data" / "processed" / "coverage.json"
 
 OUT = ROOT / "docs" / "기획서_리포트셀프바.pdf"
 URL = "custom-stock-analyst.streamlit.app"
+REPO = "github.com/Haweee47/custom-stock-analyst"
+
+# 제출 전에 팀명·작성자를 여기에 채운다
+TEAM = "리포트 셀프바"
 
 
 def count_tests() -> int:
@@ -119,12 +123,22 @@ def main() -> int:
     smallest = tiers.get("초소형 (1천억 미만)") or {}
     gap = f"{100 - smallest.get('최신율', 0):.0f}%" if smallest else "대부분"
 
+    smallest_gap = 100 - smallest.get("최신율", 0) if smallest else None
+
     facts = {
         "url": URL,
-        "coverage_rows": _rows(coverage_rows),
+        "repo": REPO,
+        "team": TEAM,
+        "kpi": kpi([
+            (f"{len(universe):,}", "다루는 종목"),
+            (f"{len(counts)}개", "국내·미국·일본·중국"),
+            (f"{smallest_gap:.0f}%" if smallest_gap else "-", "초소형주 리포트 공백"),
+            (f"{stats['per']:.1f}원", "리포트 1건 생성 비용"),
+        ]),
+        "coverage_rows": _rows(coverage_rows, highlight=len(coverage_rows) - 1),
         "coverage_date": coverage.get("측정일", "-"),
         "gap_headline": gap,
-        "features": [
+        "features": _rows([
             ("전 종목 리포트", "국내·미국·일본·중국 상장사 전부. 열람 시점에 생성"),
             ("4가지 분석 관점", "펀더멘탈 · 기술적 · 이슈·트렌드 · 종합"),
             ("2가지 분량", "압축형(한 화면) · 상세형(섹션 4~5개)"),
@@ -133,7 +147,7 @@ def main() -> int:
             ("동종업계 비교", "같은 시장·업종 안에서 중앙값 대비 위치"),
             ("숫자 검증 결과", "본문 수치의 원본 대조율을 함께 표시"),
             ("PDF 내보내기", "생성된 리포트를 파일로 저장"),
-        ],
+        ]),
         "date": date.today().strftime("%Y년 %m월 %d일"),
         "stocks": f"{len(universe):,}",
         "markets": len(counts),
@@ -171,13 +185,13 @@ def main() -> int:
         "fp_before": 32,
         "fp_after": 14,
         "cost_per": f"{stats['per']:.1f}",
-        "costs": [
+        "cost_rows": _rows([
             ("데이터 수집", "0원", "네이버 스크래이핑 · DART 공개 API"),
             ("리포트 1건", f"{stats['per']:.1f}원", "실측 평균 (gemini-3.1-flash-lite)"),
             ("일일 상한", "100건", "환경변수로 조절 가능"),
             ("상세형 별도 상한", "10건", "출력이 길어 1건 5.0원"),
             ("최악의 월 비용", "9,800원", "상한을 매일 채웠을 때"),
-        ],
+        ]),
     }
 
     path = render(facts, OUT)
