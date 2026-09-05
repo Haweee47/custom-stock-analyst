@@ -51,7 +51,9 @@ CACHE_TTL_DAYS = 7
 # v4: 추세를 한 방향으로 단정하는 문제 수정('968→977→948'을 3년 연속 감소로 적었다)
 #     및 다른 계정의 증감률을 옮겨 쓰는 문제 수정
 # v5: 매출과 이익의 연동 분석 추가(영업레버리지, 이익 변화의 매출/마진 분해)
-PROMPT_VERSION = 5
+# v6: 회사 개요(무슨 사업을 하는 곳인지)를 출처에서 받아 첫머리에 넣음,
+#     마진 변화를 원가율·판관비율로 분해
+PROMPT_VERSION = 6
 
 # 숫자 검증에 걸리면 다시 만들어 보는 횟수(첫 시도 포함). 2면 최대 한 번 더 부른다.
 VERIFY_RETRIES = 2
@@ -359,6 +361,7 @@ def build_prompt(
     news: list[dict] | None = None,
     disclosures: list[dict] | None = None,
     universe: pd.DataFrame | None = None,
+    overview: str | None = None,
 ) -> str:
     from src.collectors import markets
 
@@ -370,6 +373,13 @@ def build_prompt(
     )
 
     blocks = [_basic_block(row)]
+    if overview:
+        blocks.append(
+            "[회사 개요 (출처에서 받은 설명, 그대로 인용할 것)]\n"
+            + overview
+            + "\n(이 설명은 외부 출처에서 받은 것이다. 여기 없는 사업 내용이나 제품을 "
+            "덧붙이지 마라. 회사가 무엇을 하는지 모르겠으면 쓰지 마라.)"
+        )
     if "재무" in spec["데이터"]:
         blocks.append(_financial_block(row))
         # 매출과 이익이 같이 움직였는지는 세 숫자만 보고 판단하기 어렵다.
@@ -419,6 +429,7 @@ def analyze(
     news: list[dict] | None = None,
     disclosures: list[dict] | None = None,
     universe: pd.DataFrame | None = None,
+    overview: str | None = None,
     force: bool = False,
     batch: bool = False,
 ) -> dict:
@@ -436,7 +447,7 @@ def analyze(
 
     usage_limit.check(length, session=not batch)
 
-    prompt = build_prompt(row, perspective, length, tech, news, disclosures, universe)
+    prompt = build_prompt(row, perspective, length, tech, news, disclosures, universe, overview)
     peers = (
         peer.sector_stats(universe, row.get("업종_소분류"), row) if universe is not None else None
     )
@@ -536,6 +547,14 @@ def gather_context(row, perspective: str) -> dict:
     code = row["종목코드"]
     needed = PERSPECTIVES[perspective]["데이터"]
     context: dict = {}
+
+    from src.collectors.overview_collector import get as get_overview
+
+    # 회사가 뭐 하는 곳인지는 어느 관점에서든 첫 문단에 필요하다
+    try:
+        context["overview"] = get_overview(country, str(code), row.get("조회코드"))
+    except Exception as exc:
+        print(f"[개요 조회 실패] {code}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     if "동종업계" in needed:
         context["universe"] = load_universe()
