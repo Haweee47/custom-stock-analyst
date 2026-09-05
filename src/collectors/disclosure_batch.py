@@ -12,13 +12,14 @@ from pathlib import Path
 import pandas as pd
 import requests
 from dotenv import load_dotenv
-from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
 load_dotenv(ROOT / ".env")
 
 from src.api.disclosure import _score  # noqa: E402
+from src.collectors.progress import track  # noqa: E402
 
 PROCESSED_DIR = ROOT / "data" / "processed"
 FLAG_PATH = PROCESSED_DIR / "disclosure_flags.csv"
@@ -97,7 +98,7 @@ def collect(days: int = SEARCH_DAYS) -> pd.DataFrame:
         total_pages = int(first.get("total_page", 1))
         records.extend(first.get("list", []))
 
-        for page in tqdm(
+        for page in track(
             range(2, total_pages + 1), desc=f"공시 수집 {'KOSPI' if market == 'Y' else 'KOSDAQ'}"
         ):
             time.sleep(REQUEST_DELAY)

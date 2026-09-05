@@ -8,7 +8,8 @@ from xml.etree import ElementTree
 import pandas as pd
 import requests
 from dotenv import load_dotenv
-from tqdm import tqdm
+
+from src.collectors.progress import track
 
 load_dotenv()
 
@@ -135,7 +136,7 @@ def get_financials(
             frames.append(pd.DataFrame(payload["list"]))
         time.sleep(REQUEST_DELAY)
 
-    for start in tqdm(
+    for start in track(
         range(0, len(corp_codes), MULTI_BATCH_SIZE), desc=f"DART 재무 {year} {report}"
     ):
         fetch(corp_codes[start : start + MULTI_BATCH_SIZE])

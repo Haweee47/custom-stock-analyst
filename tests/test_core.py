@@ -712,3 +712,50 @@ class TestShareCount:
         # 상장주식수 × 주가 ≈ 시가총액이어야 한다
         thousands, price, cap = 5_846_279, 255_500, 1_493_724_200_000_000
         assert abs(thousands * 1_000 * price - cap) / cap < 0.01
+
+
+class TestProgressOutput:
+    """터미널이 아니면 tqdm이 줄을 쌓는다. CI 로그가 진행률로 덮이면 안 된다."""
+
+    def test_로그모드는_줄단위로_찍는다(self, capsys, monkeypatch):
+        from src.collectors import progress
+
+        monkeypatch.setattr(progress, "is_terminal", lambda: False)
+        items = list(progress.track(range(10), desc="수집", interval=0))
+
+        assert items == list(range(10))
+        out = capsys.readouterr().out
+        assert "수집:" in out
+        # 되감기 문자가 섞이면 로그가 한 줄로 뭉친다
+        assert "\r" not in out
+        assert out.endswith("\n")
+
+    def test_진행_건수가_로그에_남는다(self, capsys, monkeypatch):
+        from src.collectors import progress
+
+        monkeypatch.setattr(progress, "is_terminal", lambda: False)
+        list(progress.track(range(5), desc="수집", interval=999))
+
+        # 간격이 길어도 마지막 완료 줄은 반드시 남아야 한다
+        assert "완료 5건" in capsys.readouterr().out
+
+    def test_길이를_모르는_것도_처리한다(self, capsys, monkeypatch):
+        from src.collectors import progress
+
+        monkeypatch.setattr(progress, "is_terminal", lambda: False)
+        assert list(progress.track(iter(range(3)), desc="스트림", interval=0)) == [0, 1, 2]
+        assert "완료 3건" in capsys.readouterr().out
+
+    def test_모든_수집기가_track을_쓴다(self):
+        # tqdm을 직접 부르는 곳이 남아 있으면 그 단계만 로그를 덮는다
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        offenders = []
+        for path in list((root / "src").rglob("*.py")):
+            if path.name == "progress.py":
+                continue
+            if re.search(r"\btqdm\(", path.read_text(encoding="utf-8")):
+                offenders.append(path.name)
+        assert not offenders, f"tqdm을 직접 쓰는 파일: {offenders}"

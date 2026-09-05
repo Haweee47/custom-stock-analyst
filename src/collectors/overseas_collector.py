@@ -20,10 +20,11 @@ from pathlib import Path
 
 import pandas as pd
 import requests
-from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+from src.collectors.progress import track  # noqa: E402
 
 PROCESSED_DIR = ROOT / "data" / "processed"
 BASE = "https://api.stock.naver.com/stock"
@@ -117,7 +118,7 @@ def list_exchange(exchange: str, limit: int | None = None) -> pd.DataFrame:
     rows = list(first.get("stocks", []))
     pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
 
-    for page in tqdm(range(2, pages + 1), desc=f"{EXCHANGE_LABELS.get(exchange, exchange)} 목록"):
+    for page in track(range(2, pages + 1), desc=f"{EXCHANGE_LABELS.get(exchange, exchange)} 목록"):
         time.sleep(REQUEST_DELAY)
         payload = _get(f"{BASE}/exchange/{exchange}/marketValue", {"page": page, "pageSize": PAGE_SIZE})
         rows.extend(payload.get("stocks", []))
@@ -213,7 +214,7 @@ def collect(country: str = "미국", limit: int | None = None, with_financials: 
         return listing
 
     records, failed = [], 0
-    for code in tqdm(listing["조회코드"], desc=f"{country} 재무"):
+    for code in track(listing["조회코드"], desc=f"{country} 재무"):
         time.sleep(REQUEST_DELAY)
         try:
             records.append(fetch_financials(code))

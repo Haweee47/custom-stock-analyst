@@ -5,7 +5,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from tqdm import tqdm
+
+from src.collectors.progress import track
 
 RAW_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 LIST_URL = "https://finance.naver.com/sise/sise_market_sum.naver"
@@ -99,7 +100,7 @@ def collect_market(market: str) -> pd.DataFrame:
     last_page = _get_last_page(first)
 
     records = _parse_rows(first)
-    for page in tqdm(range(2, last_page + 1), desc=f"{market} 수집"):
+    for page in track(range(2, last_page + 1), desc=f"{market} 수집"):
         time.sleep(REQUEST_DELAY)
         records.extend(_parse_rows(_fetch_page(sosok, page)))
 

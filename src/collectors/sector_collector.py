@@ -10,7 +10,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from tqdm import tqdm
+
+from src.collectors.progress import track
 
 ROOT = Path(__file__).resolve().parents[2]
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -94,7 +95,7 @@ def fetch_sector_members(sector_no: str) -> list[str]:
 
 def collect() -> pd.DataFrame:
     records = []
-    for name, number in tqdm(fetch_sector_list(), desc="업종 수집"):
+    for name, number in track(fetch_sector_list(), desc="업종 수집"):
         for code in fetch_sector_members(number):
             records.append(
                 {
