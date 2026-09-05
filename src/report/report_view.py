@@ -172,21 +172,6 @@ def _num(value, unit: str = "", scale: float = 1.0, digits: int = 0) -> str:
     return f"{value / scale:,.{digits}f}{unit}"
 
 
-def won(value) -> str:
-    """원 단위 금액을 조·억으로 끊어 읽기 쉽게 만든다.
-
-    12,075,039억원처럼 자릿수가 길면 눈으로 세어야 하므로
-    1조(1e12원) 이상은 '1,207조 5,039억'으로 나눠 적는다.
-    """
-    if value is None or pd.isna(value):
-        return "—"
-    eok = value / 1e8
-    if abs(eok) < 10_000:
-        return f"{eok:,.0f}억원"
-    jo, rest = divmod(int(round(eok)), 10_000)
-    return f"{jo:,}조 {rest:,}억원" if rest else f"{jo:,}조원"
-
-
 def shares(value) -> str:
     """상장주식수. 수집기가 이미 천주 단위로 저장하므로 다시 나누면 안 된다.
 

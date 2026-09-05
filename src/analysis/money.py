@@ -42,6 +42,9 @@ def money(value, currency: str = "KRW", empty: str = "데이터 없음") -> str:
     billion = remainder / 1e8
 
     if trillion >= 1:
+        # 딱 떨어지면 '10조 0억원'이 아니라 '10조원'으로 적는다
+        if round(billion) == 0:
+            return f"{sign}{trillion:,.0f}조{unit}"
         return f"{sign}{trillion:,.0f}조 {billion:,.0f}억{unit}"
     if amount >= 1e8:
         return f"{sign}{billion:,.0f}억{unit}"

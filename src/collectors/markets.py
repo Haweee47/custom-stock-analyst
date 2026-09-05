@@ -149,8 +149,10 @@ def _overseas() -> pd.DataFrame:
         df["업종_소분류"] = df.get("업종_소분류", pd.Series("미분류", index=df.index)).fillna("미분류")
         df["업종_대분류"] = df["업종_소분류"]
 
-        rate, _ = fx_rate(str(df["통화"].dropna().iloc[0]) if df["통화"].notna().any() else "USD")
-        df["시가총액_원화"] = df["시가총액"] * rate
+        # 환율은 행마다 그 종목의 통화로 건다. 시장 하나에 통화가 하나라고 보면
+        # 언젠가 조용히 틀린다(홍콩은 한 거래소에 HKD와 CNY가 섞여 있다).
+        rates = {code: fx_rate(str(code))[0] for code in df["통화"].dropna().unique()}
+        df["시가총액_원화"] = df["시가총액"] * df["통화"].map(rates)
         frames.append(df)
 
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()

@@ -5,6 +5,8 @@
 """
 import pandas as pd
 
+from src.analysis.money import unit_of as money_unit
+
 ACCENT = "#12386b"
 UP = "#c0392b"
 DOWN = "#1f5fa8"
@@ -92,7 +94,7 @@ def find_events(df: pd.DataFrame) -> list[dict]:
     return events
 
 
-def plotly_chart(df: pd.DataFrame):
+def plotly_chart(df: pd.DataFrame, currency: str = "KRW"):
     """웹 화면용 3단 차트: 주가+지표 / 거래량 / RSI."""
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -191,7 +193,7 @@ def plotly_chart(df: pd.DataFrame):
         fig.update_xaxes(showgrid=False, zeroline=False, row=row_index, col=1)
         fig.update_yaxes(showgrid=True, gridcolor=GRID, gridwidth=1, zeroline=False,
                          row=row_index, col=1)
-    fig.update_yaxes(title_text="원", title_font_size=10, row=1, col=1)
+    fig.update_yaxes(title_text=money_unit(currency), title_font_size=10, row=1, col=1)
     fig.update_yaxes(title_text="거래량", title_font_size=10, row=2, col=1)
     fig.update_yaxes(title_text="RSI", title_font_size=10, range=[0, 100], row=3, col=1)
     return fig, events

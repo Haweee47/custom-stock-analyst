@@ -43,7 +43,6 @@ from src.report.report_view import (
     issues_html,
     metrics_html,
     styles_html,
-    won,
     yearly_table_html,
 )
 
@@ -252,7 +251,7 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
 
     if result["관점"] == "기술적" and not prices.empty:
         st.markdown("##### 지표 차트")
-        chart, events = plotly_chart(prices)
+        chart, events = plotly_chart(prices, row.get("통화") or "KRW")
         st.plotly_chart(chart, width="stretch", config={"displayModeBar": False})
         if events:
             st.caption(
@@ -428,10 +427,13 @@ def main() -> None:
         view = view[view["공시성격"] != "중대 공시"]
     if screens:
         view = apply_screens(view, screens)
-    view = view[
-        view["시가총액_원화"].isna()
-        | ((view["시가총액_원화"] / 1e8 >= cap_min) & (view["시가총액_원화"] / 1e8 <= cap_max))
-    ]
+    # 시총을 모르는 종목(상장폐지 등 251개)은 '전체'일 때만 남긴다.
+    # 규모를 골랐는데 규모를 모르는 종목이 섞여 나오면 필터가 거짓말이 된다.
+    billions = view["시가총액_원화"] / 1e8
+    if bucket == "전체":
+        view = view[billions.isna() | ((billions >= cap_min) & (billions <= cap_max))]
+    else:
+        view = view[(billions >= cap_min) & (billions <= cap_max)]
     if keyword:
         # 해외는 영문 티커나 영문명으로 찾는 사람이 많다
         haystack = view["종목명"].fillna("")

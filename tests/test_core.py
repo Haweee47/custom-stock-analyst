@@ -16,7 +16,6 @@ sys.path.insert(0, str(ROOT))
 from src.api.disclosure import _score  # noqa: E402
 from src.analysis.screens import SCREENS, apply_screens  # noqa: E402
 from src.collectors.indicators import bollinger, ichimoku, rsi  # noqa: E402
-from src.report.report_view import won  # noqa: E402
 from src.report.report_view import shares as share_count  # noqa: E402
 from src.analysis import peer  # noqa: E402
 from src.analysis.money import money as money_of  # noqa: E402
@@ -66,23 +65,24 @@ class TestDisclosureScore:
         assert _score("연결재무제표기준영업(잠정)실적(공정공시)") == 5
 
 
-class TestWonFormat:
+class TestKrwFormat:
     @pytest.mark.parametrize(
         "value,expected",
         [
             (1_502_493_600_000_000, "1,502조 4,936억원"),
             (503_900_000_000, "5,039억원"),
             (9_900_000_000, "99억원"),
+            # 딱 떨어지는 조 단위는 '10조 0억원'이 아니라 '10조원'으로
             (10_000_000_000_000, "10조원"),
             (1_000_000_000_000, "1조원"),
         ],
     )
     def test_조억_구분(self, value, expected):
-        assert won(value) == expected
+        assert money_of(value) == expected
 
-    def test_결측은_대시(self):
-        assert won(None) == "—"
-        assert won(float("nan")) == "—"
+    def test_결측은_안내문(self):
+        assert money_of(None) == "데이터 없음"
+        assert money_of(float("nan")) == "데이터 없음"
 
 
 class TestScreens:
@@ -759,3 +759,34 @@ class TestProgressOutput:
             if re.search(r"\btqdm\(", path.read_text(encoding="utf-8")):
                 offenders.append(path.name)
         assert not offenders, f"tqdm을 직접 쓰는 파일: {offenders}"
+
+
+class TestMixedCurrency:
+    """한 시장에 통화가 하나라고 가정하면 언젠가 조용히 틀린다."""
+
+    def test_행마다_그_종목의_통화로_환산한다(self, monkeypatch):
+        from src.collectors import markets
+
+        rates = {"HKD": 172.0, "CNY": 200.0}
+        monkeypatch.setattr(markets, "fx_rate", lambda c, force=False: (rates.get(c, 1.0), True))
+
+        # 홍콩처럼 한 거래소에 HKD와 CNY가 섞인 경우
+        frame = pd.DataFrame(
+            {"통화": ["HKD", "CNY", "HKD"], "시가총액": [100.0, 100.0, 200.0]}
+        )
+        converted = frame["시가총액"] * frame["통화"].map(
+            {c: markets.fx_rate(c)[0] for c in frame["통화"].unique()}
+        )
+        assert converted.tolist() == [17_200.0, 20_000.0, 34_400.0]
+
+    def test_통합표는_통화별로_환율이_하나씩만_쓰인다(self):
+        from src.collectors import markets
+
+        df = markets.load_all()
+        if df.empty:
+            pytest.skip("수집된 데이터가 없습니다")
+
+        priced = df[df["시가총액"].notna() & df["시가총액_원화"].notna()]
+        for currency, group in priced.groupby("통화"):
+            ratios = (group["시가총액_원화"] / group["시가총액"]).round(4)
+            assert ratios.nunique() == 1, f"{currency}에 환율이 여러 개 적용됐다"
