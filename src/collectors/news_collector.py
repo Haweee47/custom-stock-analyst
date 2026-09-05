@@ -4,7 +4,6 @@
 수집하거나 저장하지 않고, AI에도 제목만 전달한다.
 """
 import time
-from datetime import datetime
 
 import pandas as pd
 import requests

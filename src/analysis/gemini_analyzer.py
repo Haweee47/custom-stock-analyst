@@ -29,7 +29,8 @@ from src.analysis.report_spec import (  # noqa: E402
 
 from src.analysis import money as money_module  # noqa: E402
 from src.analysis import peer, usage_limit  # noqa: E402
-from src.analysis.usage_limit import (  # noqa: E402
+# app.py가 여기서 가져다 쓰므로 그대로 다시 내보낸다
+from src.analysis.usage_limit import (  # noqa: E402,F401
     DAILY_LIMIT,
     DailyLimitReached,
     SessionLimitReached,
