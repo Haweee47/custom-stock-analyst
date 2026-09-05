@@ -18,6 +18,7 @@ from src.analysis.screens import SCREENS, apply_screens  # noqa: E402
 from src.collectors.indicators import bollinger, ichimoku, rsi  # noqa: E402
 from src.report.report_view import shares as share_count  # noqa: E402
 from src.analysis import peer  # noqa: E402
+from src.analysis import trend as market_trend  # noqa: E402
 from src.analysis.verify import verify as verify_report  # noqa: E402
 from src.analysis.money import money as money_of  # noqa: E402
 from src.analysis.money import price as price_of  # noqa: E402
@@ -1067,3 +1068,54 @@ class TestConfigurableLimits:
 
         monkeypatch.delenv("GEMINI_DAILY_LIMIT")
         importlib.reload(module)
+
+
+class TestMarginDecomposition:
+    """'마진이 좋아졌다'가 아니라 '원가율이 내려가서 좋아졌다'까지 말해야 한다."""
+
+    @pytest.fixture
+    def samsung(self):
+        # 실제 값. 매출 - 원가 - 판관비 = 영업이익이 맞아떨어진다.
+        return pd.Series(
+            {
+                "매출액": 333_605_938_000_000,
+                "매출액_전기": 300_870_903_000_000,
+                "영업이익": 43_601_051_000_000,
+                "영업이익_전기": 32_725_961_000_000,
+                "매출원가": 202_235_513_000_000,
+                "매출원가_전기": 186_562_268_000_000,
+                "판매비와관리비": 87_769_374_000_000,
+                "판매비와관리비_전기": 81_582_674_000_000,
+                "통화": "KRW",
+                "기준연도": 2025,
+            }
+        )
+
+    def test_원가율과_판관비율을_나눈다(self, samsung):
+        parts = market_trend.cost_split(samsung)
+        assert abs(parts["원가율"]["당"] - 60.62) < 0.05
+        assert abs(parts["원가율"]["전"] - 62.01) < 0.05
+        assert abs(parts["판관비율"]["당"] - 26.31) < 0.05
+
+    def test_분해_합계가_영업이익률_변화와_맞는다(self, samsung):
+        # 영업이익률 = 100 - 원가율 - 판관비율 이므로
+        # 마진 변화 = -(원가율 변화 + 판관비율 변화)
+        parts = market_trend.cost_split(samsung)
+        linked = market_trend.compare(samsung)
+
+        total = parts["원가율"]["변화"] + parts["판관비율"]["변화"]
+        assert abs(-total - linked["영업이익률_변화"]) < 0.05
+
+    def test_비율이_내려가면_개선_요인이다(self, samsung):
+        verdict = market_trend.cost_verdict(market_trend.cost_split(samsung))
+        assert "개선 요인" in verdict
+
+    def test_원가가_없으면_건너뛴다(self):
+        # 해외 종목은 원가 항목이 없다. 없다고 깨지면 안 된다.
+        row = pd.Series({"매출액": 100.0, "매출액_전기": 90.0})
+        assert market_trend.cost_split(row) is None
+
+    def test_블록에_마진_이유가_들어간다(self, samsung):
+        block = market_trend.block(samsung)
+        assert "마진 내역" in block
+        assert "마진이 움직인 이유" in block

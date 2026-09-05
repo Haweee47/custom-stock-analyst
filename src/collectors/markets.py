@@ -127,6 +127,14 @@ def _domestic() -> pd.DataFrame:
             df[column] = "미분류"
         df[column] = df[column].fillna("미분류")
 
+    # 원가 구조는 별도 수집이라 있으면 붙이고 없으면 그냥 넘어간다.
+    # 이게 있어야 '마진이 왜 움직였나'를 원가율·판관비율로 쪼갤 수 있다.
+    from src.collectors.cost_collector import load as load_costs
+
+    costs = load_costs()
+    if not costs.empty:
+        df = df.merge(costs, on="종목코드", how="left")
+
     df["국가"] = KOREA
     df["통화"] = "KRW"
     df["조회코드"] = df["종목코드"]

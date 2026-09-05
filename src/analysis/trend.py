@@ -133,6 +133,55 @@ def verdict(sales_rate, profit_rate, margin_change, leverage) -> str:
     return f"매출과 영업이익이 비슷한 폭으로 움직였다 ({margin_word})"
 
 
+def cost_split(row: pd.Series, current_suffix: str = "", previous_suffix: str = "_전기") -> dict | None:
+    """마진 변화를 원가율과 판관비율로 쪼갠다.
+
+        영업이익률 = 100% - 원가율 - 판관비율
+
+    이걸로 '마진이 좋아졌다'가 아니라 '원가율이 내려가서 좋아졌다'까지 말할 수 있다.
+    다만 원가율이 왜 내려갔는지(단가·물량·환율)는 사업보고서 본문을 읽어야 알 수 있고,
+    이 데이터로는 알 수 없다. 여기서 멈추는 것이 정직하다.
+
+    국내만 가능하다. 해외(네이버)는 원가 항목을 주지 않는다.
+    """
+    sales_now = _value(row, f"매출액{current_suffix}")
+    sales_before = _value(row, f"매출액{previous_suffix}")
+    if sales_now is None or sales_before is None or sales_now <= 0 or sales_before <= 0:
+        return None
+
+    parts = {}
+    for name, label in [("매출원가", "원가율"), ("판매비와관리비", "판관비율")]:
+        now = _value(row, f"{name}{current_suffix}")
+        before = _value(row, f"{name}{previous_suffix}")
+        if now is None or before is None:
+            continue
+        ratio_now = now / sales_now * 100
+        ratio_before = before / sales_before * 100
+        parts[label] = {
+            "전": ratio_before,
+            "당": ratio_now,
+            "변화": ratio_now - ratio_before,
+        }
+
+    return parts or None
+
+
+def cost_verdict(parts: dict) -> str:
+    """마진이 왜 움직였는지 한 줄로. 비율이 내려가면 이익에 보탬이다."""
+    contributions = []
+    for label, data in parts.items():
+        change = data["변화"]
+        if abs(change) < 0.1:
+            continue
+        # 원가율·판관비율이 내려가면 마진은 올라간다(부호가 뒤집힌다)
+        effect = "개선" if change < 0 else "악화"
+        contributions.append(f"{label} {change:+.2f}%p({effect} 요인)")
+
+    if not contributions:
+        return "원가율과 판관비율 모두 큰 변화가 없다"
+    return " · ".join(contributions)
+
+
 def margin_position(row: pd.Series, peers: dict | None) -> str | None:
     """영업이익률이 업종에서 어디쯤인지. '왜 낮은가'의 출발점이다."""
     if not peers:
@@ -190,6 +239,16 @@ def block(row: pd.Series, peers: dict | None = None) -> str:
             f"매출이 늘어서 {money(recent['매출효과'], currency)}, "
             f"마진이 바뀌어서 {money(recent['마진효과'], currency)}"
         )
+
+    # 마진이 왜 움직였는지. 국내만 원가 항목이 있다.
+    parts = cost_split(row)
+    if parts:
+        detail = " / ".join(
+            f"{label} {data['전']:.2f}% → {data['당']:.2f}% ({data['변화']:+.2f}%p)"
+            for label, data in parts.items()
+        )
+        lines.append(f"- 마진 내역: {detail}")
+        lines.append(f"- 마진이 움직인 이유: {cost_verdict(parts)}")
 
     lines.append(f"- 결론: {recent['판정']}")
 
