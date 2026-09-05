@@ -230,6 +230,10 @@ def styles_html() -> str:
 def header_html(row: pd.Series, result: dict) -> str:
     report = result["리포트"]
     date = result["생성시각"][:10].replace("-", ".")
+    # 이 리포트가 언제까지 유효한지 알려 준다. 관점마다 다르다.
+    from src.analysis.gemini_analyzer import cache_ttl
+
+    ttl = cache_ttl(result.get("관점"))
     return f"""<div class="rpt">
   <div class="rpt-top"></div>
   <div class="rpt-band">
@@ -241,7 +245,7 @@ def header_html(row: pd.Series, result: dict) -> str:
       <p class="rpt-name">{row['종목명']} <small>({row['종목코드']})</small></p>
       <div class="rpt-meta">
         분석관점 <b>{result['관점']}</b> · {result['분량']}<br>
-        {result['모델']}<br>
+        {date} 작성 · {ttl}일간 유효<br>
         투자의견·목표주가 미제공
       </div>
     </div>

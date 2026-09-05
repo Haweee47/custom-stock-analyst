@@ -42,7 +42,21 @@ CACHE_DIR = PROCESSED_DIR / "analysis"
 load_dotenv(ROOT / ".env")
 
 MODEL = "gemini-3.1-flash-lite"
-CACHE_TTL_DAYS = 7
+
+# 캐시 수명은 관점마다 다르다. 리포트가 낡는 속도는 그 관점이 무엇을 보느냐를 따라간다.
+# 재무는 분기에 한 번 바뀌는데 7일마다 다시 만들면 같은 내용을 돈 주고 또 사는 셈이고,
+# 주가 지표는 하루만 지나도 달라지므로 7일은 너무 길다.
+CACHE_TTL_DAYS = {
+    "펀더멘탈": 14,  # 분기 재무가 바뀌어야 내용이 달라진다
+    "기술적": 3,  # 이동평균·RSI는 매일 움직인다
+    "이슈·트렌드": 5,  # 뉴스와 공시는 며칠 단위로 쌓인다
+    "종합": 7,  # 위 셋을 다 쓰므로 중간값
+}
+DEFAULT_TTL_DAYS = 7
+
+
+def cache_ttl(perspective: str | None) -> int:
+    return CACHE_TTL_DAYS.get(perspective or "", DEFAULT_TTL_DAYS)
 
 # 프롬프트를 고치면 이 숫자를 올린다. 낮은 버전으로 만들어진 캐시는 만료로 처리한다.
 # 이것이 없으면 프롬프트 버그를 고쳐도 이미 저장된 리포트가 7일간 그대로 나간다.
@@ -151,7 +165,7 @@ def load_cached(
     if data.get("프롬프트버전", 1) < PROMPT_VERSION:
         return None
     created = datetime.fromisoformat(data["생성시각"])
-    if datetime.now() - created > timedelta(days=CACHE_TTL_DAYS):
+    if datetime.now() - created > timedelta(days=cache_ttl(perspective)):
         return None
     return data
 

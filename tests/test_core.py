@@ -1119,3 +1119,48 @@ class TestMarginDecomposition:
         block = market_trend.block(samsung)
         assert "마진 내역" in block
         assert "마진이 움직인 이유" in block
+
+
+class TestCacheLifetime:
+    """리포트가 낡는 속도는 그 관점이 무엇을 보느냐를 따라간다."""
+
+    def test_관점마다_수명이_다르다(self):
+        from src.analysis.gemini_analyzer import cache_ttl
+
+        # 재무는 분기에 한 번 바뀌고, 주가 지표는 매일 움직인다
+        assert cache_ttl("펀더멘탈") > cache_ttl("종합") > cache_ttl("기술적")
+
+    def test_모르는_관점은_기본값(self):
+        from src.analysis.gemini_analyzer import DEFAULT_TTL_DAYS, cache_ttl
+
+        assert cache_ttl("없는관점") == DEFAULT_TTL_DAYS
+        assert cache_ttl(None) == DEFAULT_TTL_DAYS
+
+    def test_모든_관점에_수명이_정의돼_있다(self):
+        from src.analysis.gemini_analyzer import CACHE_TTL_DAYS
+        from src.analysis.report_spec import PERSPECTIVES
+
+        for name in PERSPECTIVES:
+            assert name in CACHE_TTL_DAYS, f"{name}의 캐시 수명이 없다"
+
+    def test_수명이_지나면_만료된다(self, tmp_path, monkeypatch):
+        import json
+        from datetime import datetime, timedelta
+
+        from src.analysis import gemini_analyzer as module
+
+        monkeypatch.setattr(module, "CACHE_DIR", tmp_path)
+
+        def write(perspective, days_ago):
+            stamp = (datetime.now() - timedelta(days=days_ago)).isoformat(timespec="seconds")
+            path = tmp_path / f"KR_005930_{perspective}_압축형.json"
+            path.write_text(
+                json.dumps({"프롬프트버전": module.PROMPT_VERSION, "생성시각": stamp}),
+                encoding="utf-8",
+            )
+
+        # 5일 지난 리포트: 펀더멘탈(14일)은 살아 있고 기술적(3일)은 만료
+        write("펀더멘탈", 5)
+        write("기술적", 5)
+        assert module.load_cached("005930", "펀더멘탈", "압축형", "국내주식") is not None
+        assert module.load_cached("005930", "기술적", "압축형", "국내주식") is None

@@ -11,7 +11,11 @@ sys.path.insert(0, str(ROOT))
 
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES  # noqa: E402
 from src.analysis.screens import SCREENS  # noqa: E402
-from src.analysis.usage_limit import DAILY_LIMIT, LENGTH_LIMITS, SESSION_LIMIT  # noqa: E402
+from src.analysis.usage_limit import (  # noqa: E402
+    DEFAULT_DAILY_LIMIT,
+    DEFAULT_SESSION_LIMIT,
+    LENGTH_LIMITS,
+)
 from src.collectors import markets  # noqa: E402
 from src.report.proposal import _rows  # noqa: E402
 from src.report.spec_doc import render  # noqa: E402
@@ -115,11 +119,11 @@ def main() -> int:
             ("뉴스·공시 제목에 실린 숫자", "인용으로 인정"),
         ]),
         "limit_rows": _rows([
-            ("캐시", "7일", "같은 종목·관점·분량은 재호출 없이 표시"),
+            ("캐시", "관점별 3~14일", "재무 14일·종합 7일·이슈 5일·주가 3일. 낡는 속도에 맞춤"),
             ("프롬프트 버전", "v6", "프롬프트가 바뀌면 옛 캐시를 자동 만료"),
-            ("일일 상한", f"{DAILY_LIMIT}건", "전체 신규 생성 건수. 환경변수로 조절"),
+            ("일일 상한", f"{DEFAULT_DAILY_LIMIT}건", "전체 신규 생성 건수. 운영 중 조절 가능"),
             ("분량별 상한", f"상세형 {LENGTH_LIMITS['상세형']}건", "출력이 길어 건당 비용이 높음"),
-            ("세션 상한", f"{SESSION_LIMIT}건", "한 방문자가 한 번에 만들 수 있는 양"),
+            ("세션 상한", f"{DEFAULT_SESSION_LIMIT}건", "한 방문자가 한 번에 만들 수 있는 양"),
             ("모델", "gemini-3.1-flash-lite", "건당 약 3.1원 (실측)"),
         ]),
         "roadmap_rows": _rows([
@@ -141,9 +145,6 @@ def main() -> int:
             ("시장 확대",
              "홍콩 보류. 한 거래소에 통화가 섞이고 같은 회사가 중복 상장",
              "통화별 중복 종목 정리와 2차 상장 분리 후 편입"),
-            ("캐시 수명",
-             "관점과 무관하게 7일 고정",
-             "입력이 낡는 속도에 맞춰 관점별로 차등(재무 14일·주가 3일)"),
         ]),
         "stack_rows": _rows([
             ("화면", "Streamlit", "Streamlit Community Cloud 배포"),

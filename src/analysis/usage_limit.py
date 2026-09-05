@@ -49,8 +49,13 @@ def _limit_from_env(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
-DAILY_LIMIT = _limit_from_env("GEMINI_DAILY_LIMIT", 100)
-SESSION_LIMIT = _limit_from_env("GEMINI_SESSION_LIMIT", 10)
+# 설계상의 기본값. 환경변수로 올릴 수 있지만 문서에는 이 값을 적는다.
+# 심사·시연 때 잠깐 올린 값이 명세서에 실리면 평상시 운영 기준을 잘못 알린다.
+DEFAULT_DAILY_LIMIT = 100
+DEFAULT_SESSION_LIMIT = 10
+
+DAILY_LIMIT = _limit_from_env("GEMINI_DAILY_LIMIT", DEFAULT_DAILY_LIMIT)
+SESSION_LIMIT = _limit_from_env("GEMINI_SESSION_LIMIT", DEFAULT_SESSION_LIMIT)
 
 # 분량별 하루 상한. 상세형은 출력 토큰이 두 배 가까워 1건 5.03원으로 압축형(3.07원)보다
 # 비싸다. 비용의 대부분(76%)이 출력에서 나오므로, 전체 상한과 별개로 긴 리포트만
