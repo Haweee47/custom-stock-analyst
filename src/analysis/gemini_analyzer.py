@@ -28,7 +28,7 @@ from src.analysis.report_spec import (  # noqa: E402
 )
 
 from src.analysis import money as money_module  # noqa: E402
-from src.analysis import peer, usage_limit, verify  # noqa: E402
+from src.analysis import peer, trend, usage_limit, verify  # noqa: E402
 # app.py가 여기서 가져다 쓰므로 그대로 다시 내보낸다
 from src.analysis.usage_limit import (  # noqa: E402,F401
     DAILY_LIMIT,
@@ -50,7 +50,8 @@ CACHE_TTL_DAYS = 7
 # v3: 해외 시장 지원. 통화별 표기, 시장별 데이터 제약 안내, 증감률 비교 대상 명시
 # v4: 추세를 한 방향으로 단정하는 문제 수정('968→977→948'을 3년 연속 감소로 적었다)
 #     및 다른 계정의 증감률을 옮겨 쓰는 문제 수정
-PROMPT_VERSION = 4
+# v5: 매출과 이익의 연동 분석 추가(영업레버리지, 이익 변화의 매출/마진 분해)
+PROMPT_VERSION = 5
 
 # 숫자 검증에 걸리면 다시 만들어 보는 횟수(첫 시도 포함). 2면 최대 한 번 더 부른다.
 VERIFY_RETRIES = 2
@@ -364,9 +365,18 @@ def build_prompt(
     spec, size = PERSPECTIVES[perspective], LENGTHS[length]
     country = row.get("국가") or markets.KOREA
 
+    peers = (
+        peer.sector_stats(universe, row.get("업종_소분류"), row) if universe is not None else None
+    )
+
     blocks = [_basic_block(row)]
     if "재무" in spec["데이터"]:
         blocks.append(_financial_block(row))
+        # 매출과 이익이 같이 움직였는지는 세 숫자만 보고 판단하기 어렵다.
+        # 계산해서 결론까지 주고 모델은 풀어 쓰기만 하게 한다.
+        linkage = trend.block(row, peers)
+        if linkage:
+            blocks.append(linkage)
     if "동종업계" in spec["데이터"] and universe is not None:
         blocks.append(peer.peer_block(row, universe))
     if "기술" in spec["데이터"]:

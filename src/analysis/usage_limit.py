@@ -15,8 +15,15 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 ROOT = Path(__file__).resolve().parents[2]
 USAGE_PATH = ROOT / "data" / "processed" / "gemini_usage.json"
+
+# .env를 여기서 직접 읽는다. 이 모듈은 gemini_analyzer가 load_dotenv를 부르기 전에
+# 임포트되기 때문에, 그쪽에만 맡기면 상한 설정이 조용히 무시된다.
+load_dotenv(ROOT / ".env")
+
 
 def _limit_from_env(name: str, default: int) -> int:
     """운영 중에 코드를 고치지 않고 상한을 조절할 수 있게 한다.

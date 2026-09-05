@@ -116,6 +116,19 @@ def source_amounts(row: pd.Series) -> dict[str, float]:
             value = row.get(key)
             if value is not None and not pd.isna(value):
                 values[key] = float(value)
+
+    # 이익 변화를 매출 몫과 마진 몫으로 나눈 금액도 프롬프트에 들어간다
+    from src.analysis import trend
+
+    for label, suffixes in [("최근", ("", "_전기")), ("직전", ("_전기", "_전전기"))]:
+        linked = trend.compare(row, *suffixes)
+        if not linked:
+            continue
+        for key in ("매출효과", "마진효과", "실제변화"):
+            value = linked.get(key)
+            if value is not None:
+                values[f"연동_{label}_{key}"] = float(value)
+                values[f"연동_{label}_{key}_절대값"] = abs(float(value))
     return values
 
 
@@ -142,6 +155,20 @@ def source_percents(row: pd.Series, peers: dict | None = None, tech: dict | None
             if rate is not None:
                 values[label] = rate
                 values[f"{label}_절대값"] = abs(rate)
+
+    # 매출·이익 연동 분석에서 나온 값들. 계산해서 프롬프트에 넣었으므로
+    # 리포트가 인용하는 것은 정당하다.
+    from src.analysis import trend
+
+    for label, suffixes in [("최근", ("", "_전기")), ("직전", ("_전기", "_전전기"))]:
+        linked = trend.compare(row, *suffixes)
+        if not linked:
+            continue
+        for key in ("영업이익률_전", "영업이익률_당", "영업이익률_변화", "레버리지"):
+            value = linked.get(key)
+            if value is not None:
+                values[f"연동_{label}_{key}"] = float(value)
+                values[f"연동_{label}_{key}_절대값"] = abs(float(value))
 
     if peers:
         for name, data in (peers.get("지표") or {}).items():
