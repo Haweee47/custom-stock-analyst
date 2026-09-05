@@ -309,6 +309,10 @@ def refresh_prices(country: str = "미국") -> int:
     updated = existing.drop(columns=columns).merge(
         fresh[["종목코드", *columns]], on="종목코드", how="left"
     )
+    # 목록에서 빠진 종목(상장폐지 등)은 갱신할 값이 없다. 종목명까지 지워지면
+    # 화면에 'nan'이 뜨므로, 새 값이 없는 칸만 이전 값으로 되돌린다.
+    for column in columns:
+        updated[column] = updated[column].fillna(existing[column])
     save(updated[order], country)
     return int(updated["현재가"].notna().sum())
 

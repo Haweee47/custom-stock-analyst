@@ -69,7 +69,7 @@ def targets(top: int, views: list[str], size: str, country: str):
     # 종목을 바깥 고리에 두면 상한에 걸려 끊겨도 상위 종목은 관점이 고루 채워진다
     for _, row in ranked.iterrows():
         for view in views:
-            if load_cached(row["종목코드"], view, size):
+            if load_cached(row["종목코드"], view, size, country):
                 cached += 1
             else:
                 todo.append((row, view))

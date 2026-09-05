@@ -29,6 +29,10 @@ RULE = "#d7dae0"
 HAIR = "#ecedf1"
 UP = "#c0392b"
 DOWN = "#1f5fa8"
+OK = "#2f6b52"
+OK_SOFT = "#eef5f1"
+WARN = "#9d6b1f"
+WARN_SOFT = "#faf3e6"
 
 CSS = f"""
 <style>
@@ -146,6 +150,15 @@ table.rpt-yr tr:last-child td {{ border-bottom: none; }}
 .rpt-half ul {{ margin: 0; padding-left: 17px; }}
 .rpt-half li {{ font-size: 12.3px; line-height: 1.65; margin-bottom: 6px; word-break: keep-all; }}
 .rpt-half li:last-child {{ margin-bottom: 0; }}
+
+/* 숫자 대조 결과 - 이 리포트가 다른 AI 리포트와 다른 점이라 눈에 띄게 둔다 */
+.rpt-verify {{
+  font-size: 12px; line-height: 1.6; padding: 10px 14px; margin-bottom: 12px;
+  border: 1px solid {RULE}; border-left: 3px solid {OK}; background: {OK_SOFT};
+  color: {INK}; word-break: keep-all;
+}}
+.rpt-verify.warn {{ border-left-color: {WARN}; background: {WARN_SOFT}; }}
+.rpt-verify .hint {{ margin-top: 5px; font-size: 11px; color: {MUTED}; }}
 
 .rpt-note {{
   background: {PAPER}; border: 1px solid {RULE}; padding: 13px 16px;
@@ -340,6 +353,36 @@ def body_html(result: dict) -> str:
 </div></div>"""
 
 
+def verification_html(result: dict) -> str:
+    """숫자 대조 결과. AI가 쓴 수치를 원본과 맞춰 봤다는 것을 독자에게 알린다.
+
+    금융 리포트에서 가장 위험한 건 문장이 아니라 숫자다. 그래서 이 표시를
+    본문 바로 아래, 면책 문구보다 위에 둔다.
+    """
+    checked = result.get("검증")
+    if not checked:
+        return ""
+
+    total, matched = checked.get("전체", 0), checked.get("확인", 0)
+    if not total:
+        return ""
+
+    unmatched = checked.get("미확인") or []
+    if not unmatched:
+        return (
+            f'<div class="rpt-verify ok">✓ 숫자 대조 완료 — 본문의 수치 {matched}개가 '
+            f"모두 원본 데이터와 일치합니다</div>"
+        )
+
+    items = ", ".join(f"<b>{u['표기']}</b>" for u in unmatched[:5])
+    return (
+        f'<div class="rpt-verify warn">⚠ 숫자 대조 — {total}개 중 {matched}개 확인. '
+        f"원본에서 출처를 찾지 못한 수치: {items}"
+        f'<div class="hint">직접 확인해보세요. 이 표시는 AI가 지어냈을 수 있는 숫자를 '
+        f"기계로 걸러낸 결과입니다.</div></div>"
+    )
+
+
 def footer_html(result: dict) -> str:
     report = result["리포트"]
     checks = "".join(f"<li>{c}</li>" for c in report["체크포인트"])
@@ -349,6 +392,7 @@ def footer_html(result: dict) -> str:
     <div class="rpt-half"><h4>투자자가 확인해야 할 점</h4><ul>{checks}</ul></div>
     <div class="rpt-half"><h4>리스크 요인</h4><ul>{risks}</ul></div>
   </div>
+  {verification_html(result)}
   <div class="rpt-note">
     <b>이 리포트가 보지 못한 것</b>
     <div class="body">{report['데이터한계']}</div>

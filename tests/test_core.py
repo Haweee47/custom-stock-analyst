@@ -18,6 +18,7 @@ from src.analysis.screens import SCREENS, apply_screens  # noqa: E402
 from src.collectors.indicators import bollinger, ichimoku, rsi  # noqa: E402
 from src.report.report_view import shares as share_count  # noqa: E402
 from src.analysis import peer  # noqa: E402
+from src.analysis.verify import verify as verify_report  # noqa: E402
 from src.analysis.money import money as money_of  # noqa: E402
 from src.analysis.money import price as price_of  # noqa: E402
 from src.analysis.gemini_analyzer import (  # noqa: E402
@@ -821,3 +822,184 @@ class TestBatchCoverage:
 
         for label in [markets.KOREA, *markets.COUNTRIES.values()]:
             assert label in workflow, f"워크플로에 {label} 워밍이 빠졌다"
+
+
+class TestNumberVerification:
+    """실제로 겪은 네 가지 숫자 오류를 검증기가 잡아내는지 확인한다.
+
+    금융 리포트에서 문장이 어색한 건 참을 수 있어도 숫자가 틀리면 못 쓴다.
+    넷 다 화면에는 멀쩡해 보였고 원본과 대조해야만 드러났다.
+    """
+
+    @pytest.fixture
+    def row(self):
+        return pd.Series(
+            {
+                "종목코드": "005930",
+                "종목명": "삼성전자",
+                "통화": "KRW",
+                "시가총액": 1_493_724_200_000_000,
+                "매출액": 333_605_938_000_000,
+                "매출액_전기": 300_870_903_000_000,
+                "매출액_전전기": 258_935_494_000_000,
+                "영업이익": 43_601_051_000_000,
+                "영업이익_전기": 32_725_961_000_000,
+                "당기순이익": 45_206_805_000_000,
+                "당기순이익_전기": 34_451_400_000_000,
+                "자본총계": 436_320_337_000_000,
+                "부채총계": 130_621_773_000_000,
+                "부채비율": 29.94,
+                "영업이익률": 13.07,
+                "ROE_계산": 10.36,
+                "PER": 11.53,
+            }
+        )
+
+    def _report(self, *lines):
+        return {"헤드라인": lines[0], "핵심포인트": list(lines[1:]), "섹션": [], "데이터한계": ""}
+
+    def test_금액_10배_오독을_잡는다(self, row):
+        # 실제 사고: 333조 6,059억원을 '3,336조원'으로 적었다
+        result = verify_report(self._report("삼성전자 실적", "매출액 3,336조원을 기록"), row)
+        assert not result["통과"]
+        assert any(u["종류"] == "금액" and "3,336조" in u["표기"] for u in result["미확인"])
+
+    def test_올바른_금액은_통과한다(self, row):
+        result = verify_report(
+            self._report("삼성전자 실적", "매출액 333조 6,059억원, 영업이익 43조 6,011억원"), row
+        )
+        assert result["통과"], result["미확인"]
+
+    def test_반올림_표기도_통과한다(self, row):
+        # '약 333조원'처럼 끊어 쓰는 것은 정당하다
+        assert verify_report(self._report("실적", "매출은 약 333조원 수준"), row)["통과"]
+
+    def test_다른_계정의_증감률을_잡는다(self, row):
+        # 실제 사고: 영업이익 증감률 자리에 당기순이익 값을 적었다.
+        # 영업이익 전년비는 +33.2%인데 엉뚱한 -46.8%를 쓰면 출처를 못 찾는다.
+        result = verify_report(self._report("실적", "영업이익이 46.8% 감소"), row)
+        assert not result["통과"]
+        assert any("46.8" in u["표기"] for u in result["미확인"])
+
+    def test_실제_증감률은_통과한다(self, row):
+        # 매출 전년비 +10.9%, 영업이익 전년비 +33.2%는 데이터에서 계산된다
+        result = verify_report(
+            self._report("실적", "매출 10.9% 증가", "영업이익 33.2% 증가"), row
+        )
+        assert result["통과"], result["미확인"]
+
+    def test_2년_전_대비도_정당한_인용이다(self, row):
+        # 258조 → 333조는 +28.8%. 전년비가 아니어도 데이터에서 나온다
+        assert verify_report(self._report("실적", "2년 만에 28.8% 성장"), row)["통과"]
+
+    def test_지어낸_비율을_잡는다(self, row):
+        result = verify_report(self._report("실적", "영업이익률이 55.5%에 달한다"), row)
+        assert not result["통과"]
+
+    def test_업종_중앙값도_출처로_인정한다(self, row):
+        peers = {"지표": {"영업이익률": {"중앙값": 4.75, "백분위": 74}}}
+        result = verify_report(
+            self._report("비교", "업종 중앙값 4.75% 대비 높다", "업종 내 상위 26%"),
+            row,
+            peers=peers,
+        )
+        assert result["통과"], result["미확인"]
+
+    def test_대조율을_계산한다(self, row):
+        result = verify_report(
+            self._report("실적", "매출 333조 6,059억원", "영업이익률 99.9%"), row
+        )
+        assert result["전체"] == 2
+        assert result["확인"] == 1
+        assert result["대조율"] == 50.0
+
+
+class TestCacheKeyCollision:
+    """한국과 중국(심천)이 6자리 종목코드를 공유한다. 실제로 54개가 겹친다."""
+
+    def test_시장이_다르면_캐시_파일도_다르다(self):
+        from src.analysis.gemini_analyzer import _cache_path
+
+        korean = _cache_path("000810", "펀더멘탈", "압축형", "국내주식")
+        chinese = _cache_path("000810", "펀더멘탈", "압축형", "중국주식")
+
+        # 같은 파일을 쓰면 삼성화재를 열었는데 창유디지털 리포트가 나온다
+        assert korean != chinese
+        assert korean.name.startswith("KR_")
+        assert chinese.name.startswith("CN_")
+
+    def test_국가를_안_주면_국내로_본다(self):
+        from src.analysis.gemini_analyzer import _cache_path
+
+        assert _cache_path("005930", "펀더멘탈", "압축형").name.startswith("KR_")
+
+    def test_모든_시장에_코드가_있다(self):
+        from src.analysis.gemini_analyzer import MARKET_CODES
+        from src.collectors import markets
+
+        for label in [markets.KOREA, *markets.COUNTRIES.values()]:
+            assert label in MARKET_CODES, f"{label}의 시장 코드가 없다"
+        assert len(set(MARKET_CODES.values())) == len(MARKET_CODES), "시장 코드가 겹친다"
+
+    def test_실제로_코드가_겹친다(self):
+        # 이 전제가 깨지면(예: 중국을 뺀다면) 접두어가 필요 없어진다
+        from src.collectors import markets
+
+        df = markets.load_all()
+        if df.empty:
+            pytest.skip("수집된 데이터가 없습니다")
+
+        codes = df["종목코드"].astype(str)
+        overlapping = codes[codes.duplicated()].nunique()
+        assert overlapping > 0, "코드 충돌이 사라졌다면 접두어 규칙을 다시 검토할 것"
+
+
+class TestVerifierSigns:
+    """한국어 리포트는 '21.5% 감소'처럼 방향을 말로 쓰고 숫자에 부호를 안 붙인다."""
+
+    @pytest.fixture
+    def row(self):
+        return pd.Series(
+            {
+                "종목코드": "7203",
+                "종목명": "토요타자동차",
+                "통화": "JPY",
+                "영업이익": 3_766_200_000_000,
+                "영업이익_전기": 4_795_600_000_000,
+                "당기순이익": 3_848_100_000_000,
+                "당기순이익_전기": 4_765_100_000_000,
+            }
+        )
+
+    def test_감소를_양수로_써도_통과한다(self, row):
+        # 영업이익 -21.5%, 당기순이익 -19.2%를 부호 없이 인용한 경우
+        report = {
+            "헤드라인": "토요타",
+            "핵심포인트": ["영업이익이 21.5%, 당기순이익이 19.2% 줄었다"],
+            "섹션": [],
+            "데이터한계": "",
+        }
+        assert verify_report(report, row)["통과"]
+
+    def test_지표의_부호도_양쪽_다_본다(self, row):
+        # '60일선_대비: -7.7%'를 본문은 '7.7% 낮은'이라고 쓴다
+        tech = {"60일선_대비": "-7.7%", "고가대비": -28.28}
+        report = {
+            "헤드라인": "주가",
+            "핵심포인트": ["60일선 대비 7.7% 낮고 기간 고가 대비 28.28% 하락"],
+            "섹션": [],
+            "데이터한계": "",
+        }
+        assert verify_report(report, row, tech=tech)["통과"]
+
+    def test_뉴스에_실린_숫자는_인용으로_본다(self, row):
+        news = [{"일자": "2026-08-21", "제목": "자기주식 1.7조원 취득 결정"}]
+        report = {
+            "헤드라인": "자기주식",
+            "핵심포인트": ["1.7조원 규모의 자기주식 취득을 결정했다"],
+            "섹션": [],
+            "데이터한계": "",
+        }
+        assert verify_report(report, row, news=news)["통과"]
+        # 뉴스를 안 주면 출처를 알 수 없으므로 잡힌다
+        assert not verify_report(report, row)["통과"]

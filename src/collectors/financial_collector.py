@@ -161,6 +161,11 @@ def refresh_prices(year: int) -> int:
     fresh = snapshot[["종목코드", *columns]]
     updated = financials.drop(columns=columns).merge(fresh, on="종목코드", how="left")
 
+    # 스냅샷에서 사라진 종목(상장폐지 등)은 갱신할 값이 없다. 그대로 두면 종목명까지
+    # 지워져 화면에 'nan'이 뜨므로, 새 값이 없는 칸만 이전 값으로 되돌린다.
+    for column in columns:
+        updated[column] = updated[column].fillna(financials[column])
+
     save(updated[order], year)
     return int(updated["현재가"].notna().sum()) if "현재가" in updated else len(updated)
 

@@ -28,7 +28,7 @@ from src.analysis.report_spec import (  # noqa: E402
 )
 
 from src.analysis import money as money_module  # noqa: E402
-from src.analysis import peer, usage_limit  # noqa: E402
+from src.analysis import peer, usage_limit, verify  # noqa: E402
 # app.py가 여기서 가져다 쓰므로 그대로 다시 내보낸다
 from src.analysis.usage_limit import (  # noqa: E402,F401
     DAILY_LIMIT,
@@ -51,6 +51,9 @@ CACHE_TTL_DAYS = 7
 # v4: 추세를 한 방향으로 단정하는 문제 수정('968→977→948'을 3년 연속 감소로 적었다)
 #     및 다른 계정의 증감률을 옮겨 쓰는 문제 수정
 PROMPT_VERSION = 4
+
+# 숫자 검증에 걸리면 다시 만들어 보는 횟수(첫 시도 포함). 2면 최대 한 번 더 부른다.
+VERIFY_RETRIES = 2
 
 DISCLAIMER = (
     "이 리포트는 AI가 공개 데이터로 생성한 정보이며 투자 권유가 아닙니다. "
@@ -88,12 +91,37 @@ def _client() -> genai.Client:
     return _CLIENT
 
 
-def _cache_path(stock_code: str, perspective: str, length: str) -> Path:
-    return CACHE_DIR / f"{stock_code}_{perspective}_{length}.json"
+def _retry_note(previous) -> str:
+    """다시 만들 때 무엇이 틀렸는지 알려 준다. 같은 실수를 반복하지 않게."""
+    _, _, checked = previous
+    items = ", ".join(f"'{u['표기']}'" for u in checked["미확인"][:6])
+    return (
+        "[직전 시도에서 발견된 문제 — 반드시 고칠 것]\n"
+        f"다음 숫자는 위 데이터에서 출처를 찾을 수 없었다: {items}\n"
+        "데이터에 적힌 값을 그대로 쓰거나, 확실하지 않으면 그 수치를 빼고 서술하라. "
+        "특히 금액은 조와 억을 바꿔 쓰지 말고, 증감률은 해당 계정의 값만 인용하라."
+    )
 
 
-def load_cached(stock_code: str, perspective: str, length: str) -> dict | None:
-    path = _cache_path(stock_code, perspective, length)
+# 시장을 파일 이름에 넣지 않으면 한국과 중국이 부딪친다. 심천도 6자리 코드를 쓰기
+# 때문에 000810이 삼성화재이면서 창유디지털이다(실제로 54개가 겹친다).
+# 그대로 두면 두 회사가 같은 캐시 파일을 쓰고, 삼성화재를 열었는데 중국 회사
+# 리포트가 나온다.
+MARKET_CODES = {"국내주식": "KR", "미국주식": "US", "일본주식": "JP", "중국주식": "CN"}
+
+
+def market_code(country: str | None) -> str:
+    return MARKET_CODES.get(country or "국내주식", "KR")
+
+
+def _cache_path(stock_code: str, perspective: str, length: str, country: str | None = None) -> Path:
+    return CACHE_DIR / f"{market_code(country)}_{stock_code}_{perspective}_{length}.json"
+
+
+def load_cached(
+    stock_code: str, perspective: str, length: str, country: str | None = None
+) -> dict | None:
+    path = _cache_path(stock_code, perspective, length, country)
     if not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -372,40 +400,67 @@ def analyze(
     stock_code = row["종목코드"]
 
     if not force:
-        cached = load_cached(stock_code, perspective, length)
+        cached = load_cached(stock_code, perspective, length, row.get("국가"))
         if cached:
             return cached
 
     usage_limit.check(length, session=not batch)
 
-    response = _client().models.generate_content(
-        model=MODEL,
-        contents=build_prompt(row, perspective, length, tech, news, disclosures, universe),
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_RULES,
-            response_mime_type="application/json",
-            response_schema=RESPONSE_SCHEMA,
-        ),
+    prompt = build_prompt(row, perspective, length, tech, news, disclosures, universe)
+    peers = (
+        peer.sector_stats(universe, row.get("업종_소분류"), row) if universe is not None else None
     )
-    usage = response.usage_metadata
+
+    # 숫자가 틀리면 한 번 다시 만든다. 프롬프트 규칙으로 줄일 수는 있어도 없앨 수는
+    # 없어서(실제로 10배 오독·증감률 오지정을 겪었다) 생성 뒤에 기계로 검산한다.
+    attempts = []
+    for attempt in range(1, VERIFY_RETRIES + 1):
+        response = _client().models.generate_content(
+            model=MODEL,
+            contents=prompt if attempt == 1 else f"{prompt}\n\n{_retry_note(attempts[-1])}",
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_RULES,
+                response_mime_type="application/json",
+                response_schema=RESPONSE_SCHEMA,
+            ),
+        )
+        usage = response.usage_metadata
+        report = json.loads(response.text)
+        checked = verify.verify(report, row, peers, tech, news, disclosures)
+        attempts.append((report, usage, checked))
+        if checked["통과"]:
+            break
+        print(
+            f"[검증] {row['종목명']} {perspective} — 출처 미확인 {len(checked['미확인'])}건"
+            f" (시도 {attempt}/{VERIFY_RETRIES})",
+            file=sys.stderr,
+        )
+
+    # 다시 만들어도 안 되면 대조율이 가장 높은 것을 쓰고 결과를 함께 남긴다
+    report, usage, checked = max(attempts, key=lambda a: a[2]["대조율"])
+
     result = {
         "종목코드": stock_code,
         "종목명": row["종목명"],
         "관점": perspective,
         "분량": length,
-        "리포트": json.loads(response.text),
+        "리포트": report,
         "모델": MODEL,
         "프롬프트버전": PROMPT_VERSION,
         "생성시각": datetime.now().isoformat(timespec="seconds"),
         "면책": DISCLAIMER,
+        "검증": checked,
+        "생성시도": len(attempts),
         "토큰": {"입력": usage.prompt_token_count, "출력": usage.candidates_token_count},
     }
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    _cache_path(stock_code, perspective, length).write_text(
+    _cache_path(stock_code, perspective, length, row.get("국가")).write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    usage_limit.record(length, session=not batch)
+    # 재시도까지 실제 호출한 횟수만큼 사용량을 센다
+    for _ in attempts:
+        usage_limit.record(length, session=not batch)
     return result
 
 

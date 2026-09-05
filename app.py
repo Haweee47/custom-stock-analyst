@@ -535,7 +535,7 @@ def main() -> None:
 
     prices = get_price_history(country, row["종목코드"], row.get("조회코드"))
 
-    cached = load_cached(row["종목코드"], perspective, length)
+    cached = load_cached(row["종목코드"], perspective, length, country)
     if cached:
         render_report(cached, row, prices)
     else:
