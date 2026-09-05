@@ -301,7 +301,7 @@ def main() -> None:
     counts = df["국가"].value_counts()
     scope = " · ".join(f"{name} {int(counts.get(name, 0)):,}개" for name in COUNTRY_ORDER if name in counts)
     st.caption(
-        f"종목도, 관점도 골라 담으세요 · {scope}"
+        f"애널리스트가 다루지 않는 종목까지 · {scope}"
         + (f" · {stamp} 종가 기준" if stamp else "")
     )
     st.caption(DISCLAIMER)
