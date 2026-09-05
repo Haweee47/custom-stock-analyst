@@ -15,6 +15,7 @@ from src.analysis.usage_limit import (  # noqa: E402
     DEFAULT_DAILY_LIMIT,
     DEFAULT_SESSION_LIMIT,
     LENGTH_LIMITS,
+    PROVIDER_DAILY_QUOTA,
 )
 from src.collectors import markets  # noqa: E402
 from src.report.proposal import _rows  # noqa: E402
@@ -124,7 +125,8 @@ def main() -> int:
             ("일일 상한", f"{DEFAULT_DAILY_LIMIT}건", "전체 신규 생성 건수. 운영 중 조절 가능"),
             ("분량별 상한", f"상세형 {LENGTH_LIMITS['상세형']}건", "출력이 길어 건당 비용이 높음"),
             ("세션 상한", f"{DEFAULT_SESSION_LIMIT}건", "한 방문자가 한 번에 만들 수 있는 양"),
-            ("모델", "gemini-3.1-flash-lite", "건당 약 3.1원 (실측)"),
+            ("제공자 한도", f"하루 {PROVIDER_DAILY_QUOTA}건", "무료 티어. 우리 상한은 항상 이보다 낮게 유지"),
+            ("모델", "gemini-3.1-flash-lite", "무료 티어 사용 중. 유료 전환 시 건당 약 3.1원"),
         ]),
         "roadmap_rows": _rows([
             ("마진이 변한 원인",

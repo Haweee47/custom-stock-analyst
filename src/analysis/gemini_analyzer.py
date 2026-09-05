@@ -7,7 +7,9 @@
 """
 import json
 import os
+import re
 import sys
+import time
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -106,6 +108,61 @@ def _client() -> genai.Client:
         )
     _CLIENT = genai.Client(api_key=key)
     return _CLIENT
+
+
+class QuotaExhausted(RuntimeError):
+    """Gemini 쪽 하루 한도를 다 썼을 때.
+
+    우리 상한(DAILY_LIMIT)과는 다르다. 이건 API 제공자가 거는 한도라 기다리는 것
+    말고는 방법이 없다. 배치가 이 예외를 만나면 남은 종목을 계속 두드리지 말고
+    그 자리에서 멈춰야 한다.
+    """
+
+
+# 429는 잠깐 몰려서 나는 것과 하루치를 다 써서 나는 것이 섞여 있다.
+# 앞의 것은 기다리면 풀리므로 몇 번 물러섰다 다시 시도한다.
+RATE_LIMIT_RETRIES = 4
+RATE_LIMIT_WAIT = 20
+
+
+def _retry_delay(error) -> float | None:
+    """오류 본문에 'retry in 31s' 같은 안내가 있으면 그만큼 기다린다."""
+    match = re.search(r"retry in ([\d.]+)s", str(error), re.IGNORECASE)
+    if match:
+        return float(match.group(1))
+    match = re.search(r"'retryDelay':\s*'(\d+)s'", str(error))
+    return float(match.group(1)) if match else None
+
+
+def _generate(contents: str):
+    """Gemini 호출. 429(요청 초과)는 물러섰다가 다시 시도한다."""
+    for attempt in range(1, RATE_LIMIT_RETRIES + 1):
+        try:
+            return _client().models.generate_content(
+                model=MODEL,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_RULES,
+                    response_mime_type="application/json",
+                    response_schema=RESPONSE_SCHEMA,
+                ),
+            )
+        except Exception as exc:
+            if "429" not in str(exc) and "RESOURCE_EXHAUSTED" not in str(exc):
+                raise
+            if attempt == RATE_LIMIT_RETRIES:
+                raise QuotaExhausted(
+                    "Gemini 하루 요청 한도를 다 썼습니다. 내일 다시 시도하세요."
+                ) from exc
+
+            wait = _retry_delay(exc) or RATE_LIMIT_WAIT * attempt
+            print(
+                f"[요청 초과] {wait:.0f}초 기다렸다 다시 시도합니다 "
+                f"({attempt}/{RATE_LIMIT_RETRIES - 1})",
+                file=sys.stderr,
+            )
+            time.sleep(wait + 1)
+    raise QuotaExhausted("도달할 수 없는 경로")
 
 
 def _retry_note(previous) -> str:
@@ -470,14 +527,8 @@ def analyze(
     # 없어서(실제로 10배 오독·증감률 오지정을 겪었다) 생성 뒤에 기계로 검산한다.
     attempts = []
     for attempt in range(1, VERIFY_RETRIES + 1):
-        response = _client().models.generate_content(
-            model=MODEL,
-            contents=prompt if attempt == 1 else f"{prompt}\n\n{_retry_note(attempts[-1])}",
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_RULES,
-                response_mime_type="application/json",
-                response_schema=RESPONSE_SCHEMA,
-            ),
+        response = _generate(
+            prompt if attempt == 1 else f"{prompt}\n\n{_retry_note(attempts[-1])}"
         )
         usage = response.usage_metadata
         report = json.loads(response.text)

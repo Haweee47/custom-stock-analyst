@@ -26,6 +26,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.analysis.gemini_analyzer import (  # noqa: E402
     ApiKeyMissing,
+    QuotaExhausted,
     analyze,
     gather_context,
     load_cached,

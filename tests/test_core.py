@@ -1164,3 +1164,70 @@ class TestCacheLifetime:
         write("기술적", 5)
         assert module.load_cached("005930", "펀더멘탈", "압축형", "국내주식") is not None
         assert module.load_cached("005930", "기술적", "압축형", "국내주식") is None
+
+
+class TestRateLimitHandling:
+    """무료 티어는 하루 500건이다. 그 벽에 부딪히면 조용히 실패하면 안 된다."""
+
+    def test_안내된_대기시간을_읽는다(self):
+        from src.analysis.gemini_analyzer import _retry_delay
+
+        assert _retry_delay("Please retry in 31.9s") == 31.9
+        assert _retry_delay("{'retryDelay': '28s'}") == 28.0
+        assert _retry_delay("그냥 오류") is None
+
+    def test_429는_물러섰다_다시_시도한다(self, monkeypatch):
+        from src.analysis import gemini_analyzer as module
+
+        calls = []
+
+        class Fake:
+            def generate_content(self, **kwargs):
+                calls.append(1)
+                if len(calls) < 3:
+                    raise RuntimeError("429 RESOURCE_EXHAUSTED. Please retry in 0.01s")
+                return "성공"
+
+        monkeypatch.setattr(module, "_client", lambda: type("C", (), {"models": Fake()})())
+        monkeypatch.setattr(module.time, "sleep", lambda _: None)
+
+        assert module._generate("프롬프트") == "성공"
+        assert len(calls) == 3
+
+    def test_계속_막히면_전용_예외를_던진다(self, monkeypatch):
+        from src.analysis import gemini_analyzer as module
+
+        class Always:
+            def generate_content(self, **kwargs):
+                raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+        monkeypatch.setattr(module, "_client", lambda: type("C", (), {"models": Always()})())
+        monkeypatch.setattr(module.time, "sleep", lambda _: None)
+
+        with pytest.raises(module.QuotaExhausted):
+            module._generate("프롬프트")
+
+    def test_429가_아닌_오류는_그대로_올린다(self, monkeypatch):
+        from src.analysis import gemini_analyzer as module
+
+        class Broken:
+            def generate_content(self, **kwargs):
+                raise ValueError("전혀 다른 문제")
+
+        monkeypatch.setattr(module, "_client", lambda: type("C", (), {"models": Broken()})())
+        with pytest.raises(ValueError):
+            module._generate("프롬프트")
+
+    def test_상한은_제공자_한도를_넘지_못한다(self, monkeypatch):
+        import importlib
+
+        from src.analysis import usage_limit as module
+
+        # 실제로 900으로 올렸다가 500에서 막힌 적이 있다
+        monkeypatch.setenv("GEMINI_DAILY_LIMIT", "900")
+        importlib.reload(module)
+        assert module.DAILY_LIMIT == module.MAX_DAILY_LIMIT
+        assert module.DAILY_LIMIT < module.PROVIDER_DAILY_QUOTA
+
+        monkeypatch.delenv("GEMINI_DAILY_LIMIT")
+        importlib.reload(module)

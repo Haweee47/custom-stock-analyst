@@ -49,12 +49,20 @@ def _limit_from_env(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
+# Gemini 무료 티어의 하루 요청 한도. 우리 상한은 이보다 낮아야 의미가 있다.
+# 실제로 상한을 900으로 올려 워밍을 돌렸다가 500에서 막혔다. 우리 쪽 상한이
+# 제공자 한도보다 크면 상한이 제 역할을 못 하고, 배치가 도중에 끊긴다.
+PROVIDER_DAILY_QUOTA = 500
+
 # 설계상의 기본값. 환경변수로 올릴 수 있지만 문서에는 이 값을 적는다.
 # 심사·시연 때 잠깐 올린 값이 명세서에 실리면 평상시 운영 기준을 잘못 알린다.
 DEFAULT_DAILY_LIMIT = 100
 DEFAULT_SESSION_LIMIT = 10
 
-DAILY_LIMIT = _limit_from_env("GEMINI_DAILY_LIMIT", DEFAULT_DAILY_LIMIT)
+# 제공자 한도를 넘겨 설정해도 그 위로는 올라가지 않는다. 검증 재시도 때문에
+# 리포트 한 건이 호출 두 번을 쓸 수 있으므로 여유를 남긴다.
+MAX_DAILY_LIMIT = int(PROVIDER_DAILY_QUOTA * 0.8)
+DAILY_LIMIT = min(_limit_from_env("GEMINI_DAILY_LIMIT", DEFAULT_DAILY_LIMIT), MAX_DAILY_LIMIT)
 SESSION_LIMIT = _limit_from_env("GEMINI_SESSION_LIMIT", DEFAULT_SESSION_LIMIT)
 
 # 분량별 하루 상한. 상세형은 출력 토큰이 두 배 가까워 1건 5.03원으로 압축형(3.07원)보다
