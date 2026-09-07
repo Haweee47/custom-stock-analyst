@@ -54,7 +54,12 @@ def main() -> int:
             continue
         row = match.iloc[0]
 
-        data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            # 워밍이 도는 중에 같이 돌리면 막 쓰이는 중인 파일을 읽을 수 있다
+            skipped += 1
+            continue
         old = data.get("검증")
         if not old:
             skipped += 1
