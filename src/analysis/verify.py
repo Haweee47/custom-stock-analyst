@@ -45,10 +45,16 @@ RATIO_FIELDS = [
     "PBR",
     "배당수익률",
     "등락률",
+    # 프롬프트의 기본 정보 블록에 들어가는 값이다. 재무가 없는 종목(인프라 펀드 등)은
+    # 리포트가 이것을 근거로 삼는데, 출처 목록에 없어서 미확인으로 잡혔다.
+    "외국인비율",
 ]
 
-# '333조 6,059억원' / '2,159억달러' / '약 333조원' / '950억원'
+# '333조 6,059억원' / '2,159억달러' / '약 333조원' / '950억원' / '-1조 7,224억원'
+# 적자 종목은 금액에 마이너스가 붙는다. 부호를 버리고 읽으면 영업손실을 적은
+# 문장이 전부 미확인으로 잡힌다. 앞이 숫자면 연도 범위('2023-2025')이므로 뺀다.
 AMOUNT_PATTERN = re.compile(
+    r"(?P<부호>(?<![\d.])-)?\s*"
     r"(?:(?P<조>\d[\d,]*(?:\.\d+)?)\s*조)?\s*"
     r"(?:(?P<억>\d[\d,]*(?:\.\d+)?)\s*억)?\s*"
     r"(?P<단위>원|달러|엔|위안|홍콩달러)?"
@@ -87,6 +93,8 @@ def find_amounts(text: str) -> list[tuple[str, float]]:
         if trillion is None and billion is None:
             continue
         value = (trillion or 0) * 1e12 + (billion or 0) * 1e8
+        if match.group("부호"):
+            value = -value
         found.append((match.group(0).strip(), value))
     return found
 
@@ -97,6 +105,26 @@ def find_percents(text: str) -> list[tuple[str, float]]:
         for m in PERCENT_PATTERN.finditer(text)
         if _to_number(m.group(1)) is not None
     ]
+
+
+def amount_step(literal: str) -> float:
+    """그 표기가 감출 수 있는 반올림 폭. '7억원'은 6.5억~7.5억 중 무엇이든 될 수 있다.
+
+    money()가 억 단위에서 반올림하므로(`{billion:,.0f}억`), 금액이 작을수록
+    반올림 폭이 상대 오차보다 커진다. 748,000,000원을 '7억원'으로 적은 것은
+    표기 규칙을 그대로 따른 것인데, 상대 오차 1.5%로만 재면 미확인으로 잡혔다.
+    표기에 남은 자릿수를 보고 그 표기가 허용하는 폭만큼만 넓혀 준다.
+    """
+    match = AMOUNT_PATTERN.search(literal)
+    if not match:
+        return 0.0
+    # 억이 적혀 있으면 그것이 가장 작은 자리다. 없으면 조가 가장 작은 자리다.
+    for group, scale in [("억", 1e8), ("조", 1e12)]:
+        raw = match.group(group)
+        if raw:
+            decimals = len(raw.split(".")[1]) if "." in raw else 0
+            return scale / (10**decimals) / 2
+    return 0.0
 
 
 def _growth(current, previous) -> float | None:
@@ -116,6 +144,9 @@ def source_amounts(row: pd.Series) -> dict[str, float]:
             value = row.get(key)
             if value is not None and not pd.isna(value):
                 values[key] = float(value)
+                # 한국어는 '영업손실 1조 7,224억원'처럼 부호를 말로 옮겨 적기도 한다.
+                # 비율에 이미 같은 규칙을 뒀는데 금액에는 빠져 있었다.
+                values[f"{key}_절대값"] = abs(float(value))
 
     # 이익 변화를 매출 몫과 마진 몫으로 나눈 금액도 프롬프트에 들어간다
     from src.analysis import trend
@@ -170,6 +201,18 @@ def source_percents(row: pd.Series, peers: dict | None = None, tech: dict | None
                 values[f"연동_{label}_{key}"] = float(value)
                 values[f"연동_{label}_{key}_절대값"] = abs(float(value))
 
+    # 마진이 왜 움직였는지도 계산해서 프롬프트에 넣는다. '원가율 100.66% → 93.62%'는
+    # 모델이 지어낸 게 아니라 우리가 준 값이다. 여기에 넣지 않으면 프롬프트가 시킨 대로
+    # 쓴 문장이 통째로 미확인으로 잡힌다(국내 리포트 통과율이 이것 때문에 눌렸다).
+    for label, suffixes in [("최근", ("", "_전기")), ("직전", ("_전기", "_전전기"))]:
+        for name, data in (trend.cost_split(row, *suffixes) or {}).items():
+            for key in ("전", "당", "변화"):
+                value = data.get(key)
+                if value is None:
+                    continue
+                values[f"원가_{label}_{name}_{key}"] = float(value)
+                values[f"원가_{label}_{name}_{key}_절대값"] = abs(float(value))
+
     if peers:
         for name, data in (peers.get("지표") or {}).items():
             if data.get("중앙값") is not None:
@@ -177,6 +220,12 @@ def source_percents(row: pd.Series, peers: dict | None = None, tech: dict | None
             if data.get("백분위") is not None:
                 values[f"업종백분위_{name}"] = float(data["백분위"])
                 values[f"업종상위_{name}"] = 100 - float(data["백분위"])
+            # 프롬프트가 '업종 대비 어디쯤인지' 쓰라고 시키므로 '중앙값보다 14.50%p
+            # 낮다'가 나온다. 두 값 다 출처에 있으니 그 차이도 인용으로 본다.
+            if data.get("값") is not None and data.get("중앙값") is not None:
+                gap = float(data["값"]) - float(data["중앙값"])
+                values[f"업종차이_{name}"] = gap
+                values[f"업종차이_{name}_절대값"] = abs(gap)
 
     if tech:
         # 지표도 부호를 양쪽 다 넣는다. '60일선_대비: -7.7%'를 본문은
@@ -194,14 +243,13 @@ def _closest(value: float, candidates: dict[str, float], relative: float | None,
     """가장 가까운 출처를 찾는다. 허용 오차 안이면 (이름, 차이)를 준다."""
     best = None
     for name, candidate in candidates.items():
+        gap = abs(value - candidate)
+        # 둘 다 주면 넉넉한 쪽을 쓴다. 큰 금액은 상대 오차가, 작은 금액은
+        # 표기 반올림 폭이 실제로 필요한 여유다.
+        limit = absolute or 0.0
         if relative is not None:
-            scale = max(abs(candidate), 1e-9)
-            gap = abs(value - candidate) / scale
-            ok = gap <= relative
-        else:
-            gap = abs(value - candidate)
-            ok = gap <= absolute
-        if ok and (best is None or gap < best[1]):
+            limit = max(limit, relative * max(abs(candidate), 1e-9))
+        if gap <= limit and (best is None or gap < best[1]):
             best = (name, gap)
     return best
 
@@ -230,6 +278,7 @@ def verify(
     tech: dict | None = None,
     news: list[dict] | None = None,
     disclosures: list[dict] | None = None,
+    overview: str | None = None,
 ) -> dict:
     """리포트의 숫자를 원본과 대조한 결과를 돌려준다.
 
@@ -252,12 +301,19 @@ def verify(
     amounts.update(quoted_amounts)
     percents.update(quoted_percents)
 
+    # 회사 개요도 우리가 프롬프트에 넣어 준 문장이다. '에너지솔루션이 매출의 94%'는
+    # 개요에 적혀 있던 값이지 모델이 만든 값이 아니다.
+    if overview:
+        over_amounts, over_percents = quoted_numbers([{"제목": overview}])
+        amounts.update({f"개요_{k}": v for k, v in over_amounts.items()})
+        percents.update({f"개요_{k}": v for k, v in over_percents.items()})
+
     checked, unmatched = 0, []
 
     for literal, value in find_amounts(text):
         if value == 0:
             continue
-        if _closest(value, amounts, relative=AMOUNT_TOLERANCE, absolute=None):
+        if _closest(value, amounts, relative=AMOUNT_TOLERANCE, absolute=amount_step(literal)):
             checked += 1
         else:
             unmatched.append({"종류": "금액", "표기": literal, "값": value})

@@ -532,7 +532,7 @@ def analyze(
         )
         usage = response.usage_metadata
         report = json.loads(response.text)
-        checked = verify.verify(report, row, peers, tech, news, disclosures)
+        checked = verify.verify(report, row, peers, tech, news, disclosures, overview)
         attempts.append((report, usage, checked))
         if checked["통과"]:
             break

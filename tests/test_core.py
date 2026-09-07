@@ -906,6 +906,63 @@ class TestNumberVerification:
         )
         assert result["통과"], result["미확인"]
 
+    def test_적자_금액의_부호를_읽는다(self, row):
+        # 실제 사고: 영업이익 -1조 7,224억원을 그대로 적은 문장이 미확인으로 잡혔다.
+        # 표기에서 마이너스를 버리고 읽어 부호가 반대인 값과 대조하고 있었다.
+        loss = row.copy()
+        loss["영업이익"] = -1_722_400_000_000
+        result = verify_report(self._report("실적", "영업이익 -1조 7,224억원으로 적자 전환"), loss)
+        assert result["통과"], result["미확인"]
+
+    def test_부호를_말로_쓴_적자도_통과한다(self, row):
+        # 한국어는 '영업손실 1조 7,224억원'처럼 마이너스를 글자로 옮긴다
+        loss = row.copy()
+        loss["영업이익"] = -1_722_400_000_000
+        assert verify_report(self._report("실적", "영업손실 1조 7,224억원"), loss)["통과"]
+
+    def test_연도_범위는_음수가_아니다(self, row):
+        # '2023-2025년 매출 333조원'의 하이픈은 부호가 아니라 범위 표시다
+        assert verify_report(self._report("실적", "2023-2025년 매출 333조원"), row)["통과"]
+
+    def test_작은_금액의_반올림을_흡수한다(self, row):
+        # money()가 억 단위에서 반올림하므로 748,000,000원은 '7억원'으로 적힌다.
+        # 상대 오차 1.5%로만 재면 정상 표기가 미확인으로 잡혔다.
+        small = row.copy()
+        small["당기순이익"] = 748_000_000
+        assert verify_report(self._report("실적", "당기순이익 7억원"), small)["통과"]
+
+    def test_원가율은_출처로_인정한다(self, row):
+        # 프롬프트에 '원가율 100.66% → 93.62%'를 계산해서 넣어 주고 있다.
+        # 출처 목록에 없어서 시킨 대로 쓴 문장이 미확인으로 잡혔다.
+        costed = row.copy()
+        costed["매출원가"] = 233_524_156_000_000
+        costed["매출원가_전기"] = 210_609_632_000_000
+        result = verify_report(
+            self._report("원가", "원가율이 70.03%에서 69.99%로 낮아졌다"), costed
+        )
+        assert result["통과"], result["미확인"]
+
+    def test_업종_중앙값과의_차이도_출처로_인정한다(self, row):
+        # 값과 중앙값을 모두 줬으면 '14.50%p 낮다'는 그 둘의 뺄셈이다
+        peers = {"지표": {"영업이익률": {"값": -12.98, "중앙값": 1.52, "백분위": 3}}}
+        result = verify_report(
+            self._report("비교", "업종 중앙값 대비 14.50%p 낮다"), row, peers=peers
+        )
+        assert result["통과"], result["미확인"]
+
+    def test_회사_개요의_숫자는_인용이다(self, row):
+        # 개요도 우리가 프롬프트에 넣어 준 문장이다
+        overview = "리튬이온 2차전지 중심의 에너지솔루션 부문이 전체 매출의 94%를 차지한다."
+        report = self._report("개요", "에너지솔루션이 매출의 94%를 차지한다")
+        assert verify_report(report, row, overview=overview)["통과"]
+        assert not verify_report(report, row)["통과"]
+
+    def test_외국인_지분율도_출처로_인정한다(self, row):
+        # 재무가 없는 종목(인프라 펀드)은 이 값을 근거로 리포트가 쓰인다
+        fund = row.copy()
+        fund["외국인비율"] = 8.63
+        assert verify_report(self._report("수급", "외국인 지분율 8.63%"), fund)["통과"]
+
     def test_대조율을_계산한다(self, row):
         result = verify_report(
             self._report("실적", "매출 333조 6,059억원", "영업이익률 99.9%"), row
