@@ -248,10 +248,15 @@ def load_cached(
     path = _cache_path(stock_code, perspective, length, country)
     if not path.exists():
         return None
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        created = datetime.fromisoformat(data["생성시각"])
+    except (json.JSONDecodeError, OSError, KeyError, ValueError):
+        # 쓰다 만 파일(프로세스가 도중에 죽은 경우)을 읽으면 그 종목 화면이 통째로
+        # 깨지고, 워밍은 대상 목록을 만들다 멈춘다. 없는 캐시로 보고 새로 만든다.
+        return None
     if data.get("프롬프트버전", 1) < PROMPT_VERSION:
         return None
-    created = datetime.fromisoformat(data["생성시각"])
     if datetime.now() - created > timedelta(days=cache_ttl(perspective)):
         return None
     return data
@@ -591,9 +596,12 @@ def analyze(
     }
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    _cache_path(stock_code, perspective, length, row.get("국가")).write_text(
-        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    # 임시 파일에 끝까지 쓴 뒤 한 번에 바꿔 끼운다. 제자리에 쓰다가 프로세스가 죽으면
+    # 반쯤 쓰인 파일이 남고, 그게 커밋되면 배포 화면까지 깨진다.
+    path = _cache_path(stock_code, perspective, length, row.get("국가"))
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(path)
     # 재시도까지 실제 호출한 횟수만큼 사용량을 센다
     for _ in attempts:
         usage_limit.record(length, session=not batch)

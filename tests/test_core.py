@@ -1312,6 +1312,26 @@ class TestRateLimitHandling:
         assert module._generate("프롬프트") == "성공"
         assert len(calls) == 5
 
+
+class TestBrokenCache:
+    """세션이 끊기며 워밍 프로세스가 도중에 죽은 적이 있다. 쓰다 만 파일이 남을 수 있다."""
+
+    @pytest.mark.parametrize(
+        "content",
+        ['{"종목코드": "005930", "리포', "", '{"종목코드": "005930"}', '{"생성시각": "어제"}'],
+        ids=["잘린_JSON", "빈_파일", "생성시각_없음", "생성시각_형식_오류"],
+    )
+    def test_깨진_캐시는_없는_것으로_본다(self, monkeypatch, tmp_path, content):
+        from src.analysis import gemini_analyzer as module
+
+        monkeypatch.setattr(module, "CACHE_DIR", tmp_path)
+        path = module._cache_path("005930", "펀더멘탈", "압축형", "국내주식")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+        # 예외가 올라오면 그 종목 화면이 깨지고 워밍은 대상 목록을 만들다 멈춘다
+        assert module.load_cached("005930", "펀더멘탈", "압축형", "국내주식") is None
+
     def test_상한은_제공자_한도를_넘지_못한다(self, monkeypatch):
         import importlib
 

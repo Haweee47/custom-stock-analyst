@@ -7,3 +7,5 @@ reports/*.md
 .claude/settings.local.json
 data/processed/gemini_usage.json
 .streamlit/secrets.toml
+# 캐시를 원자적으로 쓸 때 잠깐 생기는 임시 파일
+*.tmp
