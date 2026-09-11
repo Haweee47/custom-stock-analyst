@@ -1275,6 +1275,43 @@ class TestRateLimitHandling:
         with pytest.raises(ValueError):
             module._generate("프롬프트")
 
+    def _scripted(self, monkeypatch, errors):
+        """정해 둔 오류를 차례로 던지고, 다 던지면 성공한다."""
+        from src.analysis import gemini_analyzer as module
+
+        calls = []
+
+        class Scripted:
+            def generate_content(self, **kwargs):
+                calls.append(1)
+                if len(calls) <= len(errors):
+                    raise RuntimeError(errors[len(calls) - 1])
+                return "성공"
+
+        monkeypatch.setattr(module, "_client", lambda: type("C", (), {"models": Scripted()})())
+        monkeypatch.setattr(module.time, "sleep", lambda _: None)
+        return module, calls
+
+    def test_503은_잠깐_기다렸다_다시_시도한다(self, monkeypatch):
+        # 실제로 워밍 도중 'model is currently experiencing high demand'로 한 건이 버려졌다
+        module, calls = self._scripted(monkeypatch, ["503 UNAVAILABLE"] * 2)
+        assert module._generate("프롬프트") == "성공"
+        assert len(calls) == 3
+
+    def test_503이_끝내_안_풀려도_한도소진으로_보지_않는다(self, monkeypatch):
+        # QuotaExhausted로 올리면 배치가 '오늘은 끝'이라고 판단해 멈춰 버린다
+        module, _ = self._scripted(monkeypatch, ["503 UNAVAILABLE"] * 10)
+        with pytest.raises(RuntimeError) as info:
+            module._generate("프롬프트")
+        assert not isinstance(info.value, module.QuotaExhausted)
+
+    def test_429와_503의_재시도_횟수는_따로_센다(self, monkeypatch):
+        # 한 카운터를 같이 쓰면 429 세 번 뒤에 온 503이 마지막 기회를 빼앗는다
+        errors = ["429 RESOURCE_EXHAUSTED"] * 3 + ["503 UNAVAILABLE"]
+        module, calls = self._scripted(monkeypatch, errors)
+        assert module._generate("프롬프트") == "성공"
+        assert len(calls) == 5
+
     def test_상한은_제공자_한도를_넘지_못한다(self, monkeypatch):
         import importlib
 

@@ -124,6 +124,11 @@ class QuotaExhausted(RuntimeError):
 RATE_LIMIT_RETRIES = 4
 RATE_LIMIT_WAIT = 20
 
+# 503(서버 혼잡)은 수요가 몰릴 때 잠깐 난다. 방문자가 화면 앞에서 기다리고 있으므로
+# 429보다 짧게, 적게 재시도한다(최대 10초 + 20초).
+OVERLOAD_RETRIES = 2
+OVERLOAD_WAIT = 10
+
 
 def _retry_delay(error) -> float | None:
     """오류 본문에 'retry in 31s' 같은 안내가 있으면 그만큼 기다린다."""
@@ -134,9 +139,21 @@ def _retry_delay(error) -> float | None:
     return float(match.group(1)) if match else None
 
 
+def _is_overloaded(error) -> bool:
+    """503은 서버가 잠깐 붐빈 것이다. 우리 한도와는 관계가 없다."""
+    text = str(error)
+    return "503" in text or "UNAVAILABLE" in text
+
+
 def _generate(contents: str):
-    """Gemini 호출. 429(요청 초과)는 물러섰다가 다시 시도한다."""
-    for attempt in range(1, RATE_LIMIT_RETRIES + 1):
+    """Gemini 호출. 429(요청 초과)와 503(서버 혼잡)은 물러섰다가 다시 시도한다.
+
+    두 오류의 재시도 횟수는 따로 센다. 한 카운터를 같이 쓰면 429를 몇 번 겪은
+    뒤에 온 503 한 번이 '한도 소진'으로 둔갑해 배치 전체를 멈춘다. 503은 몇 번을
+    겪어도 한도 소진이 아니므로, 끝내 안 풀리면 원래 오류를 그대로 올린다.
+    """
+    limited = overloaded = 0
+    while True:
         try:
             return _client().models.generate_content(
                 model=MODEL,
@@ -148,21 +165,34 @@ def _generate(contents: str):
                 ),
             )
         except Exception as exc:
+            if _is_overloaded(exc):
+                overloaded += 1
+                if overloaded > OVERLOAD_RETRIES:
+                    raise
+                wait = OVERLOAD_WAIT * overloaded
+                print(
+                    f"[서버 혼잡] {wait}초 기다렸다 다시 시도합니다 "
+                    f"({overloaded}/{OVERLOAD_RETRIES})",
+                    file=sys.stderr,
+                )
+                time.sleep(wait)
+                continue
+
             if "429" not in str(exc) and "RESOURCE_EXHAUSTED" not in str(exc):
                 raise
-            if attempt == RATE_LIMIT_RETRIES:
+            limited += 1
+            if limited >= RATE_LIMIT_RETRIES:
                 raise QuotaExhausted(
                     "Gemini 하루 요청 한도를 다 썼습니다. 내일 다시 시도하세요."
                 ) from exc
 
-            wait = _retry_delay(exc) or RATE_LIMIT_WAIT * attempt
+            wait = _retry_delay(exc) or RATE_LIMIT_WAIT * limited
             print(
                 f"[요청 초과] {wait:.0f}초 기다렸다 다시 시도합니다 "
-                f"({attempt}/{RATE_LIMIT_RETRIES - 1})",
+                f"({limited}/{RATE_LIMIT_RETRIES - 1})",
                 file=sys.stderr,
             )
             time.sleep(wait + 1)
-    raise QuotaExhausted("도달할 수 없는 경로")
 
 
 def _retry_note(previous) -> str:
