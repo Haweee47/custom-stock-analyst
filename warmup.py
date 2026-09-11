@@ -126,6 +126,7 @@ def main() -> int:
         return 0
 
     made, spent, failed = 0, 0.0, []
+    quota_out = False
     started = time.time()
 
     for index, (row, view) in enumerate(todo, start=1):
@@ -144,6 +145,13 @@ def main() -> int:
         except DailyLimitReached as exc:
             print("중단")
             print(f"\n{exc}")
+            break
+        except QuotaExhausted as exc:
+            # 제공자 한도가 끝났으면 남은 종목도 전부 같은 이유로 실패한다.
+            # 일반 실패로 넘기면 종목마다 재시도 대기를 되풀이하며 시간만 쓴다.
+            print("중단")
+            print(f"\n{exc}")
+            quota_out = True
             break
         except ApiKeyMissing as exc:
             print("실패")
@@ -164,6 +172,9 @@ def main() -> int:
     if made:
         print("\n배포에 반영하려면 커밋하세요:")
         print('  git add data/processed/analysis && git commit -m "chore: 리포트 캐시 워밍"')
+    # 3은 제공자 한도 소진. 여러 시장을 이어 돌리는 스크립트가 여기서 멈출 수 있게 구분한다.
+    if quota_out:
+        return 3
     return 1 if failed else 0
 
 
