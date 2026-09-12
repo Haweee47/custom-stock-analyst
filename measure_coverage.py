@@ -15,18 +15,14 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
-import requests
-
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from src.collectors import markets  # noqa: E402
 from src.collectors.progress import track  # noqa: E402
+from src.collectors.research_collector import DELAY, fetch_reports  # noqa: E402
 
 OUT = ROOT / "data" / "processed" / "coverage.json"
-URL = "https://m.stock.naver.com/api/stock/{code}/integration"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
-DELAY = 0.15
 
 # 시가총액 구간 (억원). 커버리지가 규모를 따라간다는 것을 보이려면 나눠 세야 한다.
 TIERS = [
@@ -36,15 +32,6 @@ TIERS = [
     ("소형 (1천억~3천억)", 1_000, 3_000),
     ("초소형 (1천억 미만)", None, 1_000),
 ]
-
-
-def fetch_reports(code: str) -> list[dict]:
-    try:
-        response = requests.get(URL.format(code=code), headers=HEADERS, timeout=15)
-        response.raise_for_status()
-        return (response.json() or {}).get("researches") or []
-    except (requests.RequestException, ValueError):
-        return []
 
 
 def days_since(stamp: str | None) -> int | None:

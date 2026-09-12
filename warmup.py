@@ -11,6 +11,7 @@
     python warmup.py --top 50                 상위 50개
     python warmup.py --views 펀더멘탈 종합    관점 여러 개
     python warmup.py --country 미국주식       시장 지정
+    python warmup.py --order gap --top 100    최근 증권사 리포트가 없는 종목부터 (국내)
     python warmup.py --dry-run                쓸 돈만 계산하고 끝낸다
 
 만든 뒤에는 커밋해야 배포에 반영된다.
@@ -19,7 +20,10 @@ import argparse
 import sys
 import time
 import traceback
+from datetime import date
 from pathlib import Path
+
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
@@ -51,8 +55,41 @@ def cost_of(tokens: dict) -> float:
     ) * EXCHANGE
 
 
-def targets(top: int, views: list[str], size: str, country: str):
-    """시총 상위 종목 × 관점 조합 중 아직 캐시가 없는 것만 고른다.
+def rank_pool(pool, order: str = "cap", coverage=None, today=None):
+    """워밍 순서를 정한다.
+
+    cap  시가총액 순. 첫 화면에 익숙한 이름이 보이게 하는 용도.
+    gap  최근 3개월 안에 증권사 리포트가 없는 종목부터, 그 안에서는 시가총액 순.
+         시총 상위는 원래 리포트가 가장 많은 쪽이라, 공백을 메우려면 순서를 뒤집어야 한다.
+         현황을 조회하지 못해 모르는 종목은 둘 사이에 둔다. 한도를 추측에 쓰지 않는다.
+    """
+    # 통화가 섞이므로 순위는 원화 환산 기준으로 매긴다
+    key = "시가총액_원화" if "시가총액_원화" in pool.columns else "시가총액"
+    pool = pool.dropna(subset=[key])
+    if order != "gap" or coverage is None or coverage.empty:
+        return pool.sort_values(key, ascending=False)
+
+    from src.collectors.research_collector import FRESH_DAYS
+
+    known = coverage.drop_duplicates("종목코드").set_index("종목코드")
+    newest = pd.to_datetime(known["최근리포트일"], errors="coerce")
+    # 리포트가 아예 없으면 날짜가 비어 경과일도 비고, 비교 결과는 False(공백)가 된다
+    fresh = (pd.Timestamp(today or date.today()) - newest).dt.days <= FRESH_DAYS
+
+    # 0: 최근 리포트 없음(공백) · 1: 모름 · 2: 최근 리포트 있음
+    level = [
+        1 if code not in fresh.index else (2 if fresh[code] else 0)
+        for code in pool["종목코드"].astype(str)
+    ]
+    return (
+        pool.assign(_공백순위=level)
+        .sort_values(["_공백순위", key], ascending=[True, False])
+        .drop(columns="_공백순위")
+    )
+
+
+def targets(top: int, views: list[str], size: str, country: str, order: str = "cap"):
+    """순위 상위 종목 × 관점 조합 중 아직 캐시가 없는 것만 고른다.
 
     관점을 여러 개 받는다. 하나만 채우면 방문자가 관점을 바꾸는 순간 캐시가
     비어서 그때부터 유료 생성이 걸린다.
@@ -62,9 +99,21 @@ def targets(top: int, views: list[str], size: str, country: str):
     if pool.empty:
         raise SystemExit(f"{country} 데이터가 없습니다. 먼저 수집을 돌리세요.")
 
-    # 통화가 섞이므로 순위는 원화 환산 기준으로 매긴다
-    key = "시가총액_원화" if "시가총액_원화" in pool.columns else "시가총액"
-    ranked = pool.dropna(subset=[key]).sort_values(key, ascending=False).head(top)
+    coverage = None
+    if order == "gap":
+        if country == markets.KOREA:
+            from src.collectors import research_collector
+
+            coverage = research_collector.load()
+            if coverage.empty:
+                raise SystemExit(
+                    "증권사 리포트 현황이 없습니다. 먼저 수집하세요:\n"
+                    "  python -m src.collectors.research_collector"
+                )
+        else:
+            print(f"{country}는 한국어 리포트 현황을 받을 곳이 없어 시가총액 순으로 채웁니다.")
+
+    ranked = rank_pool(pool, order, coverage).head(top)
 
     todo, cached = [], 0
     # 종목을 바깥 고리에 두면 상한에 걸려 끊겨도 상위 종목은 관점이 고루 채워진다
@@ -92,6 +141,10 @@ def main() -> int:
         "--country", default=markets.KOREA, choices=list(markets.PERSPECTIVES),
         help="어느 시장을 채울지 (기본 국내주식)",
     )
+    parser.add_argument(
+        "--order", default="cap", choices=["cap", "gap"],
+        help="cap: 시가총액 순(기본) · gap: 최근 증권사 리포트가 없는 종목부터",
+    )
     parser.add_argument("--dry-run", action="store_true", help="비용만 계산하고 끝낸다")
     args = parser.parse_args()
 
@@ -103,12 +156,13 @@ def main() -> int:
             f"가능한 관점: {', '.join(allowed)}"
         )
 
+    order_label = "리포트 공백 우선" if args.order == "gap" else "시총 상위"
     print(
-        f"캐시 워밍 — {args.country} 시총 상위 {args.top}개 · "
+        f"캐시 워밍 — {args.country} {order_label} {args.top}개 · "
         f"{' + '.join(args.views)} · {args.size}"
     )
 
-    universe, todo, cached = targets(args.top, args.views, args.size, args.country)
+    universe, todo, cached = targets(args.top, args.views, args.size, args.country, args.order)
     print(f"이미 있음 {cached}건 / 만들 것 {len(todo)}건")
 
     if not todo:

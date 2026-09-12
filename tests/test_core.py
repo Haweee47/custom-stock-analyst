@@ -1312,6 +1312,20 @@ class TestRateLimitHandling:
         assert module._generate("프롬프트") == "성공"
         assert len(calls) == 5
 
+    def test_상한은_제공자_한도를_넘지_못한다(self, monkeypatch):
+        import importlib
+
+        from src.analysis import usage_limit as module
+
+        # 실제로 900으로 올렸다가 500에서 막힌 적이 있다
+        monkeypatch.setenv("GEMINI_DAILY_LIMIT", "900")
+        importlib.reload(module)
+        assert module.DAILY_LIMIT == module.MAX_DAILY_LIMIT
+        assert module.DAILY_LIMIT < module.PROVIDER_DAILY_QUOTA
+
+        monkeypatch.delenv("GEMINI_DAILY_LIMIT")
+        importlib.reload(module)
+
 
 class TestBrokenCache:
     """세션이 끊기며 워밍 프로세스가 도중에 죽은 적이 있다. 쓰다 만 파일이 남을 수 있다."""
@@ -1332,16 +1346,61 @@ class TestBrokenCache:
         # 예외가 올라오면 그 종목 화면이 깨지고 워밍은 대상 목록을 만들다 멈춘다
         assert module.load_cached("005930", "펀더멘탈", "압축형", "국내주식") is None
 
-    def test_상한은_제공자_한도를_넘지_못한다(self, monkeypatch):
-        import importlib
 
-        from src.analysis import usage_limit as module
+class TestGapFirstWarming:
+    """시총 상위는 원래 리포트가 가장 많은 쪽이다. 공백을 메우려면 순서를 뒤집어야 한다."""
 
-        # 실제로 900으로 올렸다가 500에서 막힌 적이 있다
-        monkeypatch.setenv("GEMINI_DAILY_LIMIT", "900")
-        importlib.reload(module)
-        assert module.DAILY_LIMIT == module.MAX_DAILY_LIMIT
-        assert module.DAILY_LIMIT < module.PROVIDER_DAILY_QUOTA
+    @pytest.fixture
+    def pool(self):
+        return pd.DataFrame(
+            {"종목코드": ["A", "B", "C", "D", "E"], "시가총액_원화": [500, 400, 300, 200, 100]}
+        )
 
-        monkeypatch.delenv("GEMINI_DAILY_LIMIT")
-        importlib.reload(module)
+    @pytest.fixture
+    def coverage(self):
+        # E는 조회에 실패해 기록이 없다
+        return pd.DataFrame(
+            {
+                "종목코드": ["A", "B", "C", "D"],
+                "리포트수": [10, 3, 0, 2],
+                "최근리포트일": ["2026-09-01", "2026-03-01", None, "2026-08-20"],
+                "수집일": ["2026-09-12"] * 4,
+            }
+        )
+
+    def test_시총_순서가_기본이다(self, pool, coverage):
+        from warmup import rank_pool
+
+        assert list(rank_pool(pool, "cap", coverage)["종목코드"]) == ["A", "B", "C", "D", "E"]
+
+    def test_최근_리포트가_없는_종목부터_채운다(self, pool, coverage):
+        from datetime import date
+
+        from warmup import rank_pool
+
+        ranked = rank_pool(pool, "gap", coverage, today=date(2026, 9, 12))
+        # B는 마지막 리포트가 6개월 전, C는 아예 없다 → 공백이므로 먼저(그 안에서 시총 순)
+        # E는 모른다 → 그다음. A·D는 최근 3개월 안에 리포트가 있다 → 마지막
+        assert list(ranked["종목코드"]) == ["B", "C", "E", "A", "D"]
+
+    def test_현황이_없으면_시총_순으로_돌아간다(self, pool):
+        from warmup import rank_pool
+
+        empty = pd.DataFrame(columns=["종목코드", "리포트수", "최근리포트일", "수집일"])
+        assert list(rank_pool(pool, "gap", empty)["종목코드"]) == ["A", "B", "C", "D", "E"]
+
+    def test_가장_최근_리포트_일자를_고른다(self):
+        from src.collectors.research_collector import newest_date
+
+        reports = [{"wdt": "20260301"}, {"wdt": "20260901"}, {"wdt": "잘못된값"}, {}]
+        assert newest_date(reports) == "2026-09-01"
+        assert newest_date([]) is None
+
+    def test_조회_실패는_리포트_없음과_구분한다(self):
+        # 섞으면 네트워크가 한 번 끊긴 종목에 공백 우선 워밍이 한도를 쓴다
+        from src.collectors.research_collector import collect
+
+        answers = {"A": [{"wdt": "20260901"}], "B": [], "C": None}
+        frame = collect(["A", "B", "C"], fetch=answers.get, delay=0)
+        assert list(frame["종목코드"]) == ["A", "B"]
+        assert frame.set_index("종목코드").loc["B", "리포트수"] == 0
