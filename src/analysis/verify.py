@@ -59,7 +59,8 @@ AMOUNT_PATTERN = re.compile(
     r"(?:(?P<억>\d[\d,]*(?:\.\d+)?)\s*억)?\s*"
     r"(?P<단위>원|달러|엔|위안|홍콩달러)?"
 )
-PERCENT_PATTERN = re.compile(r"([+-]?\d[\d,]*(?:\.\d+)?)\s*%")
+# '8%대'처럼 범위를 말하는 표기도 함께 잡는다. '4.22%대비'의 '대'는 범위가 아니다.
+PERCENT_PATTERN = re.compile(r"([+-]?\d[\d,]*(?:\.\d+)?)\s*%(대(?!비))?")
 
 
 def _to_number(text: str | None) -> float | None:
@@ -125,6 +126,29 @@ def amount_step(literal: str) -> float:
             decimals = len(raw.split(".")[1]) if "." in raw else 0
             return scale / (10**decimals) / 2
     return 0.0
+
+
+def percent_band(literal: str) -> tuple[float, float] | None:
+    """'8%대'가 가리키는 범위. 범위 표기가 아니면 None.
+
+    '영업이익률이 다시 8%대로 회복될지'는 전년 8.50%를 가리키는 맞는 문장인데,
+    8.0으로 읽어 0.15%p 안에서만 찾으니 미확인으로 잡혔다(미쓰이상선).
+    한국어에서 8%대는 8~9%, 10%대는 10~19%, 100%대는 100~199%다.
+    끝자리 0의 개수가 폭을 정한다.
+    """
+    if not literal.endswith("대"):
+        return None
+    raw = literal[:-1].rstrip().rstrip("%").strip().lstrip("+-").replace(",", "")
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    if "." in raw:
+        width = 10 ** -len(raw.split(".")[1])
+    else:
+        digits = str(int(value))
+        width = 10 ** (len(digits) - len(digits.rstrip("0"))) if int(value) else 1
+    return value, value + width
 
 
 def _growth(current, previous) -> float | None:
@@ -319,7 +343,13 @@ def verify(
             unmatched.append({"종류": "금액", "표기": literal, "값": value})
 
     for literal, value in find_percents(text):
-        if _closest(value, percents, relative=None, absolute=PERCENT_TOLERANCE):
+        band = percent_band(literal)
+        if band:
+            low, high = band
+            found = any(low <= candidate < high for candidate in percents.values())
+        else:
+            found = _closest(value, percents, relative=None, absolute=PERCENT_TOLERANCE)
+        if found:
             checked += 1
         else:
             unmatched.append({"종류": "비율", "표기": literal, "값": value})

@@ -963,6 +963,28 @@ class TestNumberVerification:
         fund["외국인비율"] = 8.63
         assert verify_report(self._report("수급", "외국인 지분율 8.63%"), fund)["통과"]
 
+    def test_퍼센트대_표기는_범위로_본다(self, row):
+        # 실제 사례: '영업이익률이 다시 8%대로 회복될지'는 전년 8.50%를 가리키는
+        # 맞는 문장인데 8.0으로 읽혀 미확인이 됐다. 여기선 영업이익률 13.07%.
+        assert verify_report(self._report("수익성", "영업이익률 13%대"), row)["통과"]
+        assert verify_report(self._report("수익성", "영업이익률 10%대"), row)["통과"]
+
+    def test_범위_밖의_퍼센트대는_잡는다(self, row):
+        # 70~79% 사이에는 이 회사의 어떤 값도 없다
+        assert not verify_report(self._report("수익성", "영업이익률 70%대"), row)["통과"]
+
+    def test_대비는_범위_표기가_아니다(self, row):
+        # '10%대비'를 10%대로 읽으면 10~19%의 아무 값이나 맞아 버린다
+        assert not verify_report(self._report("비교", "영업이익률 10%대비 높다"), row)["통과"]
+
+    def test_퍼센트대의_폭은_끝자리_0이_정한다(self):
+        from src.analysis.verify import percent_band
+
+        assert percent_band("8%대") == (8, 9)
+        assert percent_band("10%대") == (10, 20)
+        assert percent_band("100%대") == (100, 200)
+        assert percent_band("8%") is None
+
     def test_대조율을_계산한다(self, row):
         result = verify_report(
             self._report("실적", "매출 333조 6,059억원", "영업이익률 99.9%"), row
@@ -1345,6 +1367,40 @@ class TestBrokenCache:
 
         # 예외가 올라오면 그 종목 화면이 깨지고 워밍은 대상 목록을 만들다 멈춘다
         assert module.load_cached("005930", "펀더멘탈", "압축형", "국내주식") is None
+
+
+class TestReverify:
+    """재대조는 오늘 데이터로 한다. 리포트를 쓴 날과 시세가 다르다."""
+
+    @staticmethod
+    def _result(*items):
+        unmatched = [{"종류": kind, "표기": literal, "값": value} for kind, literal, value in items]
+        return {"확인": 10 - len(unmatched), "전체": 10, "미확인": unmatched,
+                "통과": not unmatched, "대조율": 0.0}
+
+    def test_생성_때_확인된_숫자는_뒤집지_않는다(self):
+        # 실제 사례: 시가총액이 그사이 움직여 맞게 쓴 13건이 미확인으로 떨어졌다
+        from reverify import keep_confirmed
+
+        result = keep_confirmed(self._result(), self._result(("금액", "1,073억달러", 1.073e11)))
+        assert result["통과"] and result["확인"] == 10 and result["대조율"] == 100.0
+
+    def test_새_규칙으로_풀린_것은_반영한다(self):
+        from reverify import keep_confirmed
+
+        result = keep_confirmed(self._result(("비율", "8%", 8.0)), self._result())
+        assert result["통과"]
+
+    def test_표기만_바뀐_미확인은_그대로_남는다(self):
+        # '70%'가 '70%대'로, '544억원'이 '-544억원'으로 읽혀도 같은 숫자다.
+        # 표기로 맞추면 이런 것이 '새로 생긴 미확인'으로 보여 확인으로 잘못 올라간다
+        from reverify import keep_confirmed
+
+        old = self._result(("비율", "70%", 70.0), ("금액", "544억원", 5.44e10))
+        new = self._result(("비율", "70%대", 70.0), ("금액", "-544억원", -5.44e10))
+        result = keep_confirmed(old, new)
+        assert not result["통과"]
+        assert len(result["미확인"]) == 2
 
 
 class TestGapFirstWarming:

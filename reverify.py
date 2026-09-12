@@ -26,6 +26,39 @@ from src.collectors.overview_collector import CACHE_PATH as OVERVIEW_CACHE  # no
 OFFLINE_PERSPECTIVES = {"펀더멘탈"}
 
 
+def _key(item: dict) -> tuple[str, float]:
+    # 표기가 아니라 값으로 맞춘다. 규칙이 바뀌면 같은 숫자의 표기가 달라진다
+    # ('70%' → '70%대', '544억원' → '-544억원'). 부호도 규칙에 따라 붙었다 떨어진다.
+    return item["종류"], round(abs(float(item["값"])), 6)
+
+
+def keep_confirmed(old: dict, new: dict) -> dict:
+    """새 검증 결과에서, 생성 당시에 확인됐던 숫자는 확인된 것으로 둔다.
+
+    재대조는 오늘 데이터로 한다. 그런데 시가총액·PER처럼 매일 바뀌는 값은 리포트를
+    쓴 날과 다르다. 9/12에 재대조했더니 맞게 쓴 시가총액 13건이 미확인으로 떨어졌다.
+    생성 때의 판정은 그날 데이터로 한 것이라 그쪽이 맞다. 재대조는 새 규칙으로
+    풀리는 것만 반영하고, 확인된 숫자를 뒤집지는 않는다.
+    """
+    remaining = [_key(item) for item in old.get("미확인", [])]
+    unmatched = []
+    for item in new["미확인"]:
+        key = _key(item)
+        if key in remaining:
+            remaining.remove(key)
+            unmatched.append(item)
+
+    total = new["전체"]
+    checked = total - len(unmatched)
+    return {
+        **new,
+        "확인": checked,
+        "미확인": unmatched,
+        "통과": not unmatched,
+        "대조율": round(checked / total * 100, 1) if total else 100.0,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="저장된 리포트를 다시 대조한다")
     parser.add_argument("--write", action="store_true", help="달라진 결과를 캐시에 쓴다")
@@ -68,7 +101,7 @@ def main() -> int:
         peers = peer.sector_stats(universe, row.get("업종_소분류"), row)
         # 개요는 받아 둔 것을 캐시에서 꺼낸다. 네트워크를 다시 타지 않는다.
         overview = overviews.get(f"{country}:{code}")
-        new = verify.verify(data["리포트"], row, peers, overview=overview)
+        new = keep_confirmed(old, verify.verify(data["리포트"], row, peers, overview=overview))
 
         total += 1
         before_pass += bool(old["통과"])
