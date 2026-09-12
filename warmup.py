@@ -145,6 +145,10 @@ def main() -> int:
         "--order", default="cap", choices=["cap", "gap"],
         help="cap: 시가총액 순(기본) · gap: 최근 증권사 리포트가 없는 종목부터",
     )
+    parser.add_argument(
+        "--max", type=int, default=None, metavar="N",
+        help="이번에 새로 만들 최대 건수. 공백 순으로 매일 조금씩 넓혀 갈 때 쓴다",
+    )
     parser.add_argument("--dry-run", action="store_true", help="비용만 계산하고 끝낸다")
     args = parser.parse_args()
 
@@ -168,6 +172,11 @@ def main() -> int:
     if not todo:
         print("\n모두 채워져 있습니다. 할 일이 없습니다.")
         return 0
+
+    # 이미 만든 종목은 대상에서 빠지므로, 매일 같은 --max로 돌리면 다음 종목으로 넓혀 간다
+    if args.max is not None and len(todo) > args.max:
+        print(f"이번에는 앞에서부터 {args.max}건만 만듭니다(--max).")
+        todo = todo[: args.max]
 
     left = remaining_today(args.size)
     if len(todo) > left:

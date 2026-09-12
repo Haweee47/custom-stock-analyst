@@ -60,10 +60,22 @@ jobs:
             python update_all.py --quick
           fi
 
+      - name: 증권사 리포트 현황 갱신
+        # 공백 순 워밍의 기준표(어느 종목에 최근 리포트가 없는지). 리포트는 천천히
+        # 쌓이므로 월요일에만 돈다(약 15분). 표가 아예 없으면 요일과 상관없이 받는다.
+        continue-on-error: true
+        run: |
+          if [ "$(date -u +%u)" = "1" ] || [ ! -f data/processed/research_coverage.csv ]; then
+            python -m src.collectors.research_collector
+          else
+            echo "월요일이 아니라 건너뜁니다."
+          fi
+
       - name: 리포트 캐시 워밍
-        # 앱에서 처음 보이는 관점만 채운다. 캐시가 7일 뒤 만료되므로 두 시장을
-        # 합쳐도 하루 8~9건 정도만 새로 만들어진다(약 27원).
-        # 일일 상한은 warmup이 알아서 지키므로 여기서 따로 막지 않는다.
+        # 1) 시총 상위: 첫 화면용. 이미 채워져 있으므로 캐시가 만료된 것만 다시 만든다.
+        # 2) 공백 순(국내): 최근 3개월 증권사 리포트가 없는 종목을 하루 40건씩 넓혀 간다.
+        #    이 서비스의 목적이 여기에 있다. 펀더멘탈 캐시 수명(14일) 동안 약 560종목이 유지된다.
+        # 둘 다 Gemini 무료 티어(하루 500건)를 나눠 쓴다. 한도가 끝나면 warmup이 스스로 멈춘다.
         # 키가 없으면 조용히 건너뛴다. 수집만으로도 커밋할 값어치가 있다.
         if: env.GEMINI_API_KEY != '' && inputs.warmup_top != '0'
         continue-on-error: true
@@ -72,6 +84,7 @@ jobs:
           for COUNTRY in 국내주식 미국주식 일본주식 중국주식; do
             python warmup.py --country "$COUNTRY" --top "$TOP" || true
           done
+          python warmup.py --country 국내주식 --order gap --top 3000 --max 40 || true
 
       - name: 변경분 커밋
         id: commit
