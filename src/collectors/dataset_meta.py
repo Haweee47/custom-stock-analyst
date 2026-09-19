@@ -46,19 +46,36 @@ def oldest_date() -> str | None:
     return min(dates) if dates else None
 
 
+def date_of(name: str) -> str | None:
+    """항목 하나의 갱신일('시세', '재무', '공시' 등). 없으면 None."""
+    stamp = (read().get(name) or {}).get("갱신", "")[:10]
+    return stamp or None
+
+
+def price_date() -> str | None:
+    """시세 기준일. 매일 바뀌는 값이라 '데이터가 낡았는가'는 이것으로 판단한다."""
+    stamp = (read().get("시세") or {}).get("갱신", "")[:10]
+    return stamp or None
+
+
 def days_old() -> int | None:
-    oldest = oldest_date()
-    if not oldest:
+    """시세가 며칠 된 것인지.
+
+    예전에는 가장 오래된 항목을 기준으로 삼았다. 그런데 가장 오래된 것은 거의 언제나
+    재무(연간 사업보고서)라, 시세가 오늘 것이어도 화면에 '19일 전' 경고가 떠 있었다.
+    낡아서 문제가 되는 것은 매일 바뀌는 시세다. 항목별 날짜는 '데이터별 갱신 시각'에 있다.
+    """
+    stamp = price_date()
+    if not stamp:
         return None
-    return (datetime.now().date() - datetime.strptime(oldest, "%Y-%m-%d").date()).days
+    return (datetime.now().date() - datetime.strptime(stamp, "%Y-%m-%d").date()).days
 
 
 def summary_line() -> str:
     """사이드바 한 줄 요약."""
-    oldest = oldest_date()
-    if not oldest:
+    stamp = price_date()
+    if not stamp:
         return "데이터 기준일 정보 없음"
     age = days_old()
-    if age == 0:
-        return f"데이터 기준 {oldest} (오늘)"
-    return f"데이터 기준 {oldest} ({age}일 전)"
+    when = "오늘" if age == 0 else "어제" if age == 1 else f"{age}일 전"
+    return f"시세 기준 {stamp} ({when})"

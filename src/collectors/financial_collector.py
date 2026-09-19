@@ -166,6 +166,17 @@ def refresh_prices(year: int) -> int:
     for column in columns:
         updated[column] = updated[column].fillna(financials[column])
 
+    # PER은 주가에 비례한다(이익은 분기에 한 번 바뀐다). 시세만 갈아 끼우고 PER을 그대로
+    # 두면 오늘 주가 옆에 3주 전 PER이 붙는다. 그렇다고 우리 연간 재무로 다시 계산하면
+    # 네이버 기준(최근 실적 반영)과 크게 어긋난다(삼성전자 12.09배 → 34.8배).
+    # 주가가 오른 비율만큼 옮기면 둘 다 피한다.
+    if "PER" in updated.columns and "현재가" in updated.columns:
+        old_price = pd.to_numeric(financials["현재가"], errors="coerce")
+        new_price = pd.to_numeric(updated["현재가"], errors="coerce")
+        ratio = (new_price / old_price).where((old_price > 0) & (new_price > 0))
+        scaled = (pd.to_numeric(financials["PER"], errors="coerce") * ratio).round(2)
+        updated["PER"] = scaled.fillna(updated["PER"])
+
     save(updated[order], year)
     return int(updated["현재가"].notna().sum()) if "현재가" in updated else len(updated)
 

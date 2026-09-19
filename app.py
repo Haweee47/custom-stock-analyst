@@ -275,9 +275,14 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
     st.html(
         issues_html(issues) + yearly_table_html(row) + footer_html(result)
     )
-    stamp = dataset_meta.oldest_date()
-    if stamp:
-        st.caption(f"재무·시세 데이터 기준일 {stamp} · 뉴스와 공시는 조회 시점 기준")
+    prices = dataset_meta.price_date()
+    books = dataset_meta.date_of("재무")
+    if prices or books:
+        parts = [f"시세 {prices}" if prices else "", f"재무 {books}" if books else ""]
+        st.caption(
+            " · ".join(p for p in parts if p)
+            + " 기준 · 뉴스와 공시는 조회 시점 기준"
+        )
 
     try:
         st.download_button(
@@ -297,7 +302,9 @@ def main() -> None:
     ready = get_ready()
 
     st.title("리포트 셀프바")
-    stamp = dataset_meta.oldest_date()
+    # '종가 기준'이라고 써 놓고 가장 오래된 항목(대개 연간 재무) 날짜를 넣고 있었다.
+    # 시세가 오늘 것이어도 3주 전 날짜가 찍혔다.
+    stamp = dataset_meta.price_date()
     counts = df["국가"].value_counts()
     scope = " · ".join(f"{name} {int(counts.get(name, 0)):,}개" for name in COUNTRY_ORDER if name in counts)
     st.caption(

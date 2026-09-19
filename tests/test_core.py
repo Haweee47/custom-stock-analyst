@@ -1460,3 +1460,88 @@ class TestGapFirstWarming:
         frame = collect(["A", "B", "C"], fetch=answers.get, delay=0)
         assert list(frame["종목코드"]) == ["A", "B"]
         assert frame.set_index("종목코드").loc["B", "리포트수"] == 0
+
+
+class TestDomesticPrices:
+    """네이버가 시가총액 페이지를 JS로 바꾸면서 HTML 파서가 0행을 돌려줬다(9월).
+
+    그 결과 국내 시세가 3주 동안 멈췄고 갱신 배치는 KeyError로 죽었다.
+    이제 그 페이지가 쓰는 JSON API를 직접 쓴다.
+    """
+
+    @staticmethod
+    def _payload():
+        return {
+            "totalCount": 2,
+            "stocks": [
+                {
+                    "itemCode": "005930",
+                    "stockName": "삼성전자",
+                    "stockEndType": "stock",
+                    "closePriceRaw": "260000",
+                    "fluctuationsRatio": "2.97",
+                    "marketValueRaw": "1520032438080000",
+                    "accumulatedTradingVolumeRaw": "15042569",
+                },
+                {
+                    "itemCode": "69500",
+                    "stockName": "KODEX 200",
+                    "stockEndType": "etf",
+                    "closePriceRaw": "N/A",
+                    "fluctuationsRatio": "",
+                    "marketValueRaw": "",
+                    "accumulatedTradingVolumeRaw": "0",
+                },
+            ],
+        }
+
+    def test_응답을_우리_열로_옮긴다(self):
+        from src.collectors.stock_collector import _parse_stocks
+
+        rows = _parse_stocks(self._payload(), "KOSPI")
+        first = rows[0]
+        assert first["종목코드"] == "005930" and first["시장구분"] == "KOSPI"
+        assert first["현재가"] == 260000 and first["등락률"] == 2.97
+        assert first["시가총액"] == 1_520_032_438_080_000
+        assert first["거래량"] == 15_042_569
+
+    def test_주식수는_시총_나누기_주가다(self):
+        # API가 주식수를 주지 않는다. 단위는 천주 — 화면이 그 단위를 전제로 표시한다.
+        from src.collectors.stock_collector import _parse_stocks
+
+        assert _parse_stocks(self._payload(), "KOSPI")[0]["상장주식수"] == 5_846_279
+
+    def test_값이_없어도_죽지_않는다(self):
+        # 'N/A'와 빈 문자열이 섞여 온다. 여기서 터지면 수집 전체가 멈춘다.
+        from src.collectors.stock_collector import _parse_stocks
+
+        second = _parse_stocks(self._payload(), "KOSPI")[1]
+        assert second["현재가"] is None and second["상장주식수"] is None
+        assert second["종목코드"] == "069500"  # 6자리로 채운다
+
+    def test_ETF는_종류로_가려낸다(self):
+        from src.collectors.stock_collector import classify
+
+        assert classify("069500", "KODEX 200", set(), "etf") == "ETF"
+        assert classify("005930", "삼성전자", set(), "stock") == "보통주"
+        assert classify("005935", "삼성전자우", set(), "stock") == "우선주"
+
+
+class TestDataFreshness:
+    """'데이터 기준'은 매일 바뀌는 시세를 따라야 한다."""
+
+    def test_기준일은_시세를_따른다(self, monkeypatch):
+        # 예전에는 가장 오래된 항목을 썼다. 거의 언제나 연간 재무라서, 시세가 오늘
+        # 것이어도 '19일 전' 경고가 떠 있었다.
+        from datetime import datetime
+
+        from src.collectors import dataset_meta as module
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        monkeypatch.setattr(
+            module, "read", lambda: {"시세": {"갱신": f"{today} 13:50"}, "재무": {"갱신": "2026-08-31 07:03"}}
+        )
+        assert module.days_old() == 0
+        assert "오늘" in module.summary_line() and today in module.summary_line()
+        assert module.oldest_date() == "2026-08-31"  # 항목별 확인에는 그대로 쓴다
+        assert module.date_of("재무") == "2026-08-31"
