@@ -6,9 +6,19 @@
 import json
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 META_PATH = ROOT / "data" / "processed" / "dataset_meta.json"
+
+# 한국 시장 데이터이므로 날짜는 한국 시간으로 센다. 수집은 GitHub Actions(UTC)에서 돌고
+# 배포도 UTC 서버라, 그냥 now()를 쓰면 화면에 '시세 기준 2026-09-20 (-1일 전)'처럼
+# 음수가 찍힌다. 실제로 그렇게 나왔다.
+KST = ZoneInfo("Asia/Seoul")
+
+
+def now() -> datetime:
+    return datetime.now(KST)
 
 LABELS = {
     "시세": "국내 주가·시가총액",
@@ -23,7 +33,7 @@ LABELS = {
 def stamp(dataset: str, note: str = "") -> None:
     meta = read()
     meta[dataset] = {
-        "갱신": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "갱신": now().strftime("%Y-%m-%d %H:%M"),
         "비고": note,
     }
     META_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -68,7 +78,9 @@ def days_old() -> int | None:
     stamp = price_date()
     if not stamp:
         return None
-    return (datetime.now().date() - datetime.strptime(stamp, "%Y-%m-%d").date()).days
+    age = (now().date() - datetime.strptime(stamp, "%Y-%m-%d").date()).days
+    # 수집이 배포 서버보다 앞선 시간대에서 돌면 음수가 나올 수 있다. 그건 '오늘'이다.
+    return max(age, 0)
 
 
 def summary_line() -> str:

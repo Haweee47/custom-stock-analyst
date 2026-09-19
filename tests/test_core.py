@@ -1545,3 +1545,15 @@ class TestDataFreshness:
         assert "오늘" in module.summary_line() and today in module.summary_line()
         assert module.oldest_date() == "2026-08-31"  # 항목별 확인에는 그대로 쓴다
         assert module.date_of("재무") == "2026-08-31"
+
+    def test_서버가_한국보다_늦어도_음수가_안_나온다(self, monkeypatch):
+        # 실제로 화면에 '시세 기준 2026-09-20 (-1일 전)'이 찍혔다. 수집은 한국 날짜로
+        # 찍히는데 배포 서버는 UTC라 하루 뒤처져 있었다.
+        from datetime import datetime
+
+        from src.collectors import dataset_meta as module
+
+        monkeypatch.setattr(module, "read", lambda: {"시세": {"갱신": "2026-09-20 06:30"}})
+        monkeypatch.setattr(module, "now", lambda: datetime(2026, 9, 19, 22, 0, tzinfo=module.KST))
+        assert module.days_old() == 0
+        assert "오늘" in module.summary_line()
