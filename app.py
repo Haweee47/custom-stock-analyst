@@ -81,9 +81,15 @@ def get_ready() -> dict:
     return ready_reports()
 
 
-@st.cache_data
+@st.cache_data(ttl=1800, show_spinner=False)
 def get_data() -> pd.DataFrame:
-    """국내와 해외를 한 표로 합치고 국내에만 공시를 붙인다."""
+    """국내와 해외를 한 표로 합치고 국내에만 공시를 붙인다.
+
+    수명을 둔다. 예전에는 수명 없이 캐시했는데, 그러면 새 데이터가 배포돼도 프로세스가
+    완전히 재시작하기 전까지 옛 표가 그대로 나간다. 실제로 시세를 갱신해 배포한 뒤에도
+    화면에는 3주 전 주가가 남아 있었다(기준일 문구만 새 날짜로 바뀌어 더 헷갈렸다 —
+    그 문구는 파일을 매번 읽기 때문이다). 갱신은 하루 한 번이므로 30분이면 넉넉하다.
+    """
     df = markets.load_all()
     if df.empty:
         return df
