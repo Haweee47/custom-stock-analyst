@@ -1,0 +1,82 @@
+name: 앱 깨워 두기
+
+# Streamlit Community Cloud는 한동안 아무도 안 들어오면 앱을 재운다. 다시 열면
+# "get this app back up" 버튼부터 보이고 깨어나는 데 시간이 걸린다.
+# 원티드 AI Championship 예선은 유저 투표(2026-09-21 ~ 10-05)가 심사에 들어가므로,
+# 심사위원이나 투표자가 링크를 눌렀을 때 잠들어 있으면 그대로 손해다.
+#
+# 단순 HTTP 요청으로는 앱이 깨지 않는다. 앱은 브라우저가 웹소켓을 열어야 실행되므로
+# 실제 브라우저로 접속해 화면이 그려지는 것까지 확인한다.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # 데모데이(10-17)가 지나면 더 돌릴 이유가 없다. 켜 두고 잊어버리는 것을 막는다.
+      - name: 기간 확인
+        id: window
+        run: |
+          if [ "$(date -u +%Y-%m-%d)" \> "2026-10-18" ]; then
+            echo "심사 기간이 끝나 건너뜁니다. 이 워크플로는 지워도 됩니다."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.window.outputs.skip != 'true'
+        with:
+          node-version: "20"
+
+      - name: 브라우저 설치
+        if: steps.window.outputs.skip != 'true'
+        run: npx --yes playwright@1.47.2 install --with-deps chromium
+
+      - name: 앱 열어 보기
+        if: steps.window.outputs.skip != 'true'
+        env:
+          APP_URL: https://custom-stock-analyst.streamlit.app
+        run: |
+          npm install --no-save playwright@1.47.2
+          node -e "
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+            await page.goto(process.env.APP_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+
+            // 잠들어 있으면 깨우는 버튼이 먼저 나온다
+            const wake = page.getByRole('button', { name: /get this app back up/i });
+            if (await wake.count()) {
+              console.log('앱이 잠들어 있어 깨웁니다.');
+              await wake.first().click();
+            }
+
+            // 화면이 실제로 그려질 때까지 기다린다. 여기까지 와야 앱이 돌았다고 할 수 있다.
+            await page.waitForSelector('[data-testid=\"stApp\"]', { timeout: 120000 });
+            await page.waitForTimeout(5000);
+            const title = await page.title();
+            const text = (await page.locator('body').innerText()).slice(0, 200).replace(/\s+/g, ' ');
+            console.log('제목:', title);
+            console.log('화면:', text);
+            await page.screenshot({ path: 'app.png', fullPage: false });
+            await browser.close();
+          })().catch((error) => { console.error('실패:', error.message); process.exit(1); });
+          "
+
+      - name: 화면 남기기
+        if: steps.window.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-screenshot
+          path: app.png
+          retention-days: 7
+          if-no-files-found: ignore
