@@ -4,6 +4,7 @@
 수집하거나 저장하지 않고, AI에도 제목만 전달한다.
 """
 import time
+from datetime import datetime, timedelta
 
 import pandas as pd
 import requests
@@ -12,7 +13,9 @@ from bs4 import BeautifulSoup
 from src.collectors import indicators
 
 NEWS_URL = "https://finance.naver.com/item/news_news.naver"
-PRICE_URL = "https://finance.naver.com/item/sise_day.naver"
+# 예전 일별 시세 페이지(finance.naver.com/item/sise_day.naver)는 2026-09에 410으로 닫혔다.
+# 시가총액 페이지와 같은 개편이다. 이제는 차트가 쓰는 JSON API에서 받는다.
+CHART_URL = "https://api.stock.naver.com/chart/domestic/item/{code}/day"
 HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/"}
 REQUEST_DELAY = 0.3
 
@@ -56,35 +59,49 @@ def fetch_news(stock_code: str, limit: int = 15) -> list[dict]:
     return items
 
 
-def fetch_price_history(stock_code: str, pages: int = 7) -> pd.DataFrame:
-    """일별 시세. 한 페이지가 10거래일이므로 기본 7페이지는 약 70거래일."""
-    records = []
-    for page in range(1, pages + 1):
-        soup = _soup(PRICE_URL, {"code": stock_code, "page": page})
-        for tr in soup.select("table.type2 tr"):
-            cells = [x.get_text(strip=True) for x in tr.select("span.tah")]
-            if len(cells) != 7:
-                continue
-            records.append(
-                {
-                    "일자": cells[0],
-                    "종가": cells[1],
-                    "시가": cells[3],
-                    "고가": cells[4],
-                    "저가": cells[5],
-                    "거래량": cells[6],
-                }
-            )
-        time.sleep(REQUEST_DELAY)
+FIELDS = {
+    "closePrice": "종가",
+    "openPrice": "시가",
+    "highPrice": "고가",
+    "lowPrice": "저가",
+    "accumulatedTradingVolume": "거래량",
+}
 
-    if not records:
+
+def fetch_price_history(stock_code: str, pages: int = 7) -> pd.DataFrame:
+    """일별 시세. 기간을 넘기면 한 번에 받는다.
+
+    예전에는 일별 시세 페이지를 10거래일씩 넘겨 가며 긁었다(페이지 수만큼 요청).
+    그 페이지가 닫히면서 기술적 관점 리포트와 주가 차트가 통째로 비었다.
+    호출부가 `pages`로 분량을 말하고 있어 그 뜻(한 페이지=10거래일)은 그대로 두고,
+    안에서 달력일로 바꿔 한 번에 받는다. 거래일은 달력일의 약 70%라 넉넉히 잡는다.
+    """
+    end = datetime.now()
+    start = end - timedelta(days=int(pages * 10 * 1.5) + 10)
+    response = requests.get(
+        CHART_URL.format(code=stock_code),
+        params={
+            "startDateTime": start.strftime("%Y%m%d0000"),
+            "endDateTime": end.strftime("%Y%m%d0000"),
+        },
+        headers=HEADERS,
+        timeout=15,
+    )
+    response.raise_for_status()
+    rows = response.json() or []
+    if not rows:
         return pd.DataFrame()
 
-    df = pd.DataFrame(records)
-    df["일자"] = pd.to_datetime(df["일자"], format="%Y.%m.%d")
-    for col in ["종가", "시가", "고가", "저가", "거래량"]:
-        df[col] = pd.to_numeric(df[col].str.replace(",", "", regex=False), errors="coerce")
-    return df.sort_values("일자").reset_index(drop=True)
+    df = pd.DataFrame(
+        [
+            {"일자": row.get("localDate"), **{name: row.get(key) for key, name in FIELDS.items()}}
+            for row in rows
+        ]
+    )
+    df["일자"] = pd.to_datetime(df["일자"], format="%Y%m%d", errors="coerce")
+    for column in FIELDS.values():
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+    return df.dropna(subset=["일자", "종가"]).sort_values("일자").reset_index(drop=True)
 
 
 def technical_summary(df: pd.DataFrame) -> dict:
