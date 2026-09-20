@@ -1527,6 +1527,32 @@ class TestDomesticPrices:
         assert classify("005935", "삼성전자우", set(), "stock") == "우선주"
 
 
+class TestReportRendering:
+    """리포트를 그리는 함수는 받은 데이터를 그대로 아래 단계로 넘겨야 한다."""
+
+    def test_인자를_덮어쓰지_않는다(self):
+        # 실제 사고: 기준일 문구를 고치며 prices라는 이름을 다시 썼다. 그 인자는 주가
+        # 이력 데이터프레임이었고, 날짜 문자열로 덮여 PDF 생성이 통째로 죽었다
+        # ('str' object has no attribute 'empty'). 화면에서는 조용히 넘어가 더 늦게 찾았다.
+        import ast
+        import inspect
+
+        import app as module
+
+        source = inspect.getsource(module.render_report)
+        function = ast.parse(source).body[0]
+        params = {arg.arg for arg in function.args.args}
+        assigned = {
+            target.id
+            for node in ast.walk(function)
+            if isinstance(node, ast.Assign)
+            for target in node.targets
+            if isinstance(target, ast.Name)
+        }
+        overwritten = params & assigned
+        assert not overwritten, f"render_report가 인자를 덮어썼습니다: {overwritten}"
+
+
 class TestDataFreshness:
     """'데이터 기준'은 매일 바뀌는 시세를 따라야 한다."""
 

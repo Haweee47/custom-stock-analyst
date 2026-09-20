@@ -302,10 +302,12 @@ def render_report(result: dict, row: pd.Series, prices: pd.DataFrame) -> None:
     st.html(
         issues_html(issues) + yearly_table_html(row) + footer_html(result)
     )
-    prices = dataset_meta.price_date()
+    # 이름을 prices로 두면 안 된다. 이 함수의 인자 prices가 주가 이력이라 덮어써지고,
+    # 아래 PDF 생성에 날짜 문자열이 넘어가 'str' object has no attribute 'empty'로 터진다.
+    price_stamp = dataset_meta.price_date()
     books = dataset_meta.date_of("재무")
-    if prices or books:
-        parts = [f"시세 {prices}" if prices else "", f"재무 {books}" if books else ""]
+    if price_stamp or books:
+        parts = [f"시세 {price_stamp}" if price_stamp else "", f"재무 {books}" if books else ""]
         st.caption(
             " · ".join(p for p in parts if p)
             + " 기준 · 뉴스와 공시는 조회 시점 기준"
