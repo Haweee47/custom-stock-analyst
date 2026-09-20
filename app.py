@@ -1,4 +1,5 @@
 """리포트 셀프바 - Streamlit 웹앱."""
+import math
 import sys
 from pathlib import Path
 
@@ -82,6 +83,18 @@ def get_ready() -> dict:
 
 
 DATA_DIR = ROOT / "data" / "processed"
+
+
+def cap_limit(caps: pd.Series) -> int:
+    """시가총액 필터의 상한(억원). 내림이 아니라 올림이어야 한다.
+
+    int()로 자르면 시총 1위 종목이 자기 자신 때문에 사라진다. 삼성전자는
+    15,200,324.38억원인데 상한이 15,200,324억원이 되어 '전체'에서도 빠졌다.
+    네이버가 억원 단위 정수를 주던 때는 소수점이 없어 드러나지 않다가, 원 단위
+    정확한 값을 받기 시작하면서 나타났다(2026-09-20). 1위 한 종목만 조용히
+    빠지는 형태라 눈에 잘 띄지 않는다.
+    """
+    return math.ceil(caps.max()) if not caps.empty else 0
 
 
 def data_version() -> str:
@@ -405,7 +418,7 @@ def main() -> None:
 
         # 통화가 섞이므로 시총 범위는 원화 환산 기준으로 건다
         caps = pool["시가총액_원화"].dropna() / 1e8
-        cap_ceiling = int(caps.max()) if not caps.empty else 0
+        cap_ceiling = cap_limit(caps)
 
         bucket_counts = {
             name: int(((caps >= (low or 0)) & (caps < (high or float("inf")))).sum())

@@ -1527,6 +1527,26 @@ class TestDomesticPrices:
         assert classify("005935", "삼성전자우", set(), "stock") == "우선주"
 
 
+class TestMarketCapFilter:
+    """시총 필터의 상한은 1위 종목을 담을 수 있어야 한다."""
+
+    def test_상한은_올림한다(self):
+        # 실제 사고: int()로 잘라 삼성전자(15,200,324.38억원)가 상한
+        # 15,200,324억원보다 커져 '전체'에서도 사라졌다. 화면에서는 1위 한 종목만
+        # 조용히 빠져서, 검색해도 안 나오는 상태로 며칠 갈 뻔했다.
+        import app as module
+
+        caps = pd.Series([15_200_324.3808, 13_506_803.82, 1_414.2])
+        ceiling = module.cap_limit(caps)
+        assert ceiling >= caps.max(), "1위 종목이 상한 밖으로 밀려났다"
+        assert bool((caps <= ceiling).all())
+
+    def test_빈_표에서도_죽지_않는다(self):
+        import app as module
+
+        assert module.cap_limit(pd.Series([], dtype=float)) == 0
+
+
 class TestReportRendering:
     """리포트를 그리는 함수는 받은 데이터를 그대로 아래 단계로 넘겨야 한다."""
 
