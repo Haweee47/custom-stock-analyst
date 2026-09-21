@@ -1550,6 +1550,52 @@ class TestDomesticPrices:
         assert classify("005935", "삼성전자우", set(), "stock") == "우선주"
 
 
+class TestIndustryMismatch:
+    """업종이 틀리면 동종업계 비교의 모집단이 틀린다. 숫자 검증기로는 안 잡힌다."""
+
+    @staticmethod
+    def _sample(group_size: int):
+        rows = [
+            {"종목코드": f"A{i:03d}", "종목명": f"식품{i}", "업종_소분류": "식품"}
+            for i in range(group_size - 1)
+        ]
+        rows.append({"종목코드": "A999", "종목명": "메지온", "업종_소분류": "식품"})
+        rows += [
+            {"종목코드": f"B{i:03d}", "종목명": f"제약{i}", "업종_소분류": "제약"}
+            for i in range(group_size)
+        ]
+        codes = pd.DataFrame(
+            [
+                {
+                    "종목코드": r["종목코드"],
+                    # 메지온과 제약 종목은 의학·약학 연구개발업, 나머지는 식품 제조업
+                    "표준산업분류": "70113"
+                    if r["종목코드"] == "A999" or r["종목코드"].startswith("B")
+                    else "10712",
+                }
+                for r in rows
+            ]
+        )
+        return pd.DataFrame(rows), codes
+
+    def test_업종_안에서_혼자_다른_산업을_쓰면_잡는다(self):
+        # 실제 사례: 신약 개발사 메지온이 네이버 분류로 '식품'이라 삼양식품·오리온과
+        # 부채비율을 비교했다. 산업코드(70113 의학·약학 연구개발업)로는 드러난다.
+        from src.collectors.industry_collector import mismatches
+
+        universe, codes = self._sample(25)
+        found = mismatches(universe, codes)
+        assert list(found["종목명"]) == ["메지온"]
+        assert found.iloc[0]["주로_속한_업종"] == "제약"
+
+    def test_표본이_적은_업종은_의심하지_않는다(self):
+        # 5종목짜리 업종에서 '혼자 다르다'는 말은 성립하지 않는다
+        from src.collectors.industry_collector import mismatches
+
+        universe, codes = self._sample(5)
+        assert mismatches(universe, codes).empty
+
+
 class TestMarketCapFilter:
     """시총 필터의 상한은 1위 종목을 담을 수 있어야 한다."""
 
