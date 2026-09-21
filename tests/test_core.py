@@ -1456,10 +1456,33 @@ class TestGapFirstWarming:
         # 섞으면 네트워크가 한 번 끊긴 종목에 공백 우선 워밍이 한도를 쓴다
         from src.collectors.research_collector import collect
 
-        answers = {"A": [{"wdt": "20260901"}], "B": [], "C": None}
+        answers = {
+            "A": {
+                "researches": [{"wdt": "20260901"}],
+                "dealTrendInfos": [{"foreignerHoldRatio": "46.45%"}],
+            },
+            "B": {},  # 조회는 됐고 리포트가 없다
+            "C": None,  # 조회 실패
+        }
         frame = collect(["A", "B", "C"], fetch=answers.get, delay=0)
         assert list(frame["종목코드"]) == ["A", "B"]
-        assert frame.set_index("종목코드").loc["B", "리포트수"] == 0
+        indexed = frame.set_index("종목코드")
+        assert indexed.loc["B", "리포트수"] == 0
+        assert indexed.loc["A", "외국인비율"] == 46.45
+
+    def test_외국인_지분율을_같은_응답에서_받는다(self):
+        # 9/20에 시세 출처를 바꾸며 외국인비율이 빠졌다. 호출을 늘리지 않고 여기서 받는다.
+        from src.collectors.research_collector import foreign_ratio
+
+        payload = {
+            "dealTrendInfos": [
+                {"bizdate": "20260918", "foreignerHoldRatio": "46.45%"},
+                {"bizdate": "20260917", "foreignerHoldRatio": "46.48%"},
+            ]
+        }
+        assert foreign_ratio(payload) == 46.45  # 가장 최근 거래일
+        assert foreign_ratio({"dealTrendInfos": [{"foreignerHoldRatio": "N/A"}]}) is None
+        assert foreign_ratio({}) is None
 
 
 class TestDomesticPrices:

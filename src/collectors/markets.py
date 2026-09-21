@@ -135,6 +135,16 @@ def _domestic() -> pd.DataFrame:
     if not costs.empty:
         df = df.merge(costs, on="종목코드", how="left")
 
+    # 외국인 지분율은 시세 API가 주지 않는다(2026-09-20 출처 변경). 주 1회 도는
+    # 종목 종합 정보 수집에서 받아 두고 여기서 덮어쓴다. 없는 종목은 옛 값을 남긴다.
+    from src.collectors.research_collector import load as load_research
+
+    research = load_research()
+    if not research.empty and "외국인비율" in research.columns:
+        fresh = research.dropna(subset=["외국인비율"]).drop_duplicates("종목코드")
+        mapped = df["종목코드"].map(fresh.set_index("종목코드")["외국인비율"])
+        df["외국인비율"] = mapped.fillna(df["외국인비율"]) if "외국인비율" in df else mapped
+
     df["국가"] = KOREA
     df["통화"] = "KRW"
     df["조회코드"] = df["종목코드"]
