@@ -127,6 +127,12 @@ def _domestic() -> pd.DataFrame:
             df[column] = "미분류"
         df[column] = df[column].fillna("미분류")
 
+    # 네이버 업종이 실제 사업과 다른 종목은 확인된 것만 손으로 바로잡는다.
+    # 업종은 동종업계 비교의 모집단이라, 틀리면 계산이 맞아도 결론이 틀린다.
+    from src.collectors.industry_collector import apply_overrides
+
+    df = apply_overrides(df)
+
     # 원가 구조는 별도 수집이라 있으면 붙이고 없으면 그냥 넘어간다.
     # 이게 있어야 '마진이 왜 움직였나'를 원가율·판관비율로 쪼갤 수 있다.
     from src.collectors.cost_collector import load as load_costs

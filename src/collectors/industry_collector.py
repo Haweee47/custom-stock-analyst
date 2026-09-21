@@ -22,9 +22,11 @@ from src.collectors.progress import track
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "data" / "processed" / "industry_codes.csv"
+OVERRIDES = ROOT / "data" / "processed" / "industry_overrides.csv"
 DELAY = 0.05
 
 COLUMNS = ["종목코드", "표준산업분류", "수집일"]
+OVERRIDE_COLUMNS = ["종목코드", "종목명", "업종_대분류", "업종_소분류", "근거"]
 
 # 업종 하나에서 이 비율보다 드문 산업코드를 쓰면 분류를 의심한다.
 RARE_SHARE = 0.05
@@ -67,6 +69,36 @@ def load() -> pd.DataFrame:
     return pd.read_csv(
         OUT, dtype={"종목코드": str, "표준산업분류": str}, encoding="utf-8-sig"
     )
+
+
+def load_overrides() -> pd.DataFrame:
+    if not OVERRIDES.exists():
+        return pd.DataFrame(columns=OVERRIDE_COLUMNS)
+    return pd.read_csv(OVERRIDES, dtype={"종목코드": str}, encoding="utf-8-sig")
+
+
+def apply_overrides(df: pd.DataFrame) -> pd.DataFrame:
+    """확인된 오분류를 바로잡는다.
+
+    자동 판정만으로 업종을 갈아끼우지 않는다. 상위 25개를 직접 확인해 보니 진짜
+    오분류는 3개뿐이었다(2026-09-21). 나머지는 KSIC가 제조 공정을, 네이버가 테마를
+    기준으로 삼아 갈린 것이고, 동종업계 재무 비교에는 네이버 쪽이 낫다.
+    그래서 사람이 확인한 것만 파일에 적어 두고 여기서 덮어쓴다. 근거도 같이 적는다.
+    """
+    fixes = load_overrides()
+    if fixes.empty or "종목코드" not in df.columns:
+        return df
+
+    indexed = fixes.drop_duplicates("종목코드").set_index("종목코드")
+    if not df["종목코드"].isin(indexed.index).any():
+        return df
+
+    df = df.copy()
+    df["업종_원본"] = df["업종_소분류"]
+    for column in ("업종_대분류", "업종_소분류"):
+        if column in indexed.columns:
+            df[column] = df["종목코드"].map(indexed[column]).fillna(df[column])
+    return df
 
 
 def mismatches(universe: pd.DataFrame, industry: pd.DataFrame) -> pd.DataFrame:

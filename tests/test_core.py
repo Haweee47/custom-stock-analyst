@@ -1588,6 +1588,37 @@ class TestIndustryMismatch:
         assert list(found["종목명"]) == ["메지온"]
         assert found.iloc[0]["주로_속한_업종"] == "제약"
 
+    def test_확인된_오분류만_바로잡는다(self, monkeypatch, tmp_path):
+        # 자동 판정은 오탐이 많다(상위 25개 중 진짜는 3개). 사람이 확인한 것만 고친다.
+        from src.collectors import industry_collector as module
+
+        path = tmp_path / "overrides.csv"
+        path.write_text(
+            "종목코드,종목명,업종_대분류,업종_소분류,근거\n"
+            "140410,메지온,바이오·헬스케어,제약,의학·약학 연구개발업\n",
+            encoding="utf-8-sig",
+        )
+        monkeypatch.setattr(module, "OVERRIDES", path)
+
+        df = pd.DataFrame(
+            {
+                "종목코드": ["140410", "005930"],
+                "업종_대분류": ["식음료·담배", "IT·반도체"],
+                "업종_소분류": ["식품", "반도체와반도체장비"],
+            }
+        )
+        fixed = module.apply_overrides(df)
+        assert list(fixed["업종_소분류"]) == ["제약", "반도체와반도체장비"]
+        assert list(fixed["업종_대분류"]) == ["바이오·헬스케어", "IT·반도체"]
+        assert fixed.loc[0, "업종_원본"] == "식품"  # 원래 분류를 남긴다
+
+    def test_보정_파일이_없으면_그대로_둔다(self, monkeypatch, tmp_path):
+        from src.collectors import industry_collector as module
+
+        monkeypatch.setattr(module, "OVERRIDES", tmp_path / "없는파일.csv")
+        df = pd.DataFrame({"종목코드": ["005930"], "업종_소분류": ["반도체와반도체장비"]})
+        assert module.apply_overrides(df).equals(df)
+
     def test_표본이_적은_업종은_의심하지_않는다(self):
         # 5종목짜리 업종에서 '혼자 다르다'는 말은 성립하지 않는다
         from src.collectors.industry_collector import mismatches
