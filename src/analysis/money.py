@@ -51,6 +51,26 @@ def money(value, currency: str = "KRW", empty: str = "데이터 없음") -> str:
     return f"{sign}{amount:,.0f}{unit}"
 
 
+def compact(value, currency: str = "KRW", empty: str = "데이터 없음") -> str:
+    """좁은 자리(지표 타일)에 넣을 금액. 가장 큰 단위 하나만 남긴다.
+
+    money()는 '1,622조 5,721억원'처럼 두 단위를 함께 적는다. 문장에서는 그게 정확하고
+    읽기도 좋지만, 화면을 여섯 칸으로 나눈 지표 타일에서는 넘쳐서 '1,622…'로 잘린다.
+    규모를 한눈에 보는 자리이므로 조 단위까지만 보여도 충분하다.
+    """
+    if value is None or pd.isna(value):
+        return empty
+
+    unit = unit_of(currency)
+    sign = "-" if value < 0 else ""
+    amount = abs(float(value))
+    if amount >= 1e12:
+        return f"{sign}{amount / 1e12:,.0f}조{unit}"
+    if amount >= 1e8:
+        return f"{sign}{amount / 1e8:,.0f}억{unit}"
+    return f"{sign}{amount:,.0f}{unit}"
+
+
 def price(value, currency: str = "KRW", empty: str = "데이터 없음") -> str:
     """주가. 달러는 센트가 의미 있으므로 소수 둘째 자리까지 남긴다."""
     if value is None or pd.isna(value):

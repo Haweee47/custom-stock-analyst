@@ -24,6 +24,7 @@ from src.analysis.gemini_analyzer import (
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES
 from src.analysis.screens import apply_screens, available_screens, screen_counts
+from src.analysis.money import compact as money_compact
 from src.analysis.money import money, price
 from src.analysis.money import unit_of as money_unit
 from src.analysis.usage_limit import (
@@ -153,14 +154,24 @@ METRIC_LABELS = {
 }
 
 
+METRIC_CSS = """<style>
+/* 국내는 타일이 여섯 칸이라 기본 글자 크기로는 '277,5…'처럼 값이 잘린다.
+   한 단계 줄여 한 줄에 담는다. */
+[data-testid="stMetricValue"] { font-size: 1.55rem; line-height: 1.3; }
+[data-testid="stMetricLabel"] p { font-size: 0.85rem; }
+</style>"""
+
+
 def stat_row(row: pd.Series) -> None:
     """단일 수치는 차트가 아니라 스탯 타일로 보여준다."""
     currency = row.get("통화") or "KRW"
     metrics = markets.available_metrics(row.get("국가"))
 
+    st.html(METRIC_CSS)
     cols = st.columns(2 + len(metrics))
     cols[0].metric("현재가", price(row.get("현재가"), currency, empty="—"))
-    cols[1].metric("시가총액", money(row.get("시가총액"), currency, empty="—"))
+    # 타일에서는 '1,622조 5,721억원'이 넘친다. 조 단위까지만 보여도 규모는 읽힌다.
+    cols[1].metric("시가총액", money_compact(row.get("시가총액"), currency, empty="—"))
 
     for col, key in zip(cols[2:], metrics):
         label, fmt = METRIC_LABELS.get(key, (key, "{:,.2f}"))

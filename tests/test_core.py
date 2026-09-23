@@ -1550,6 +1550,26 @@ class TestDomesticPrices:
         assert classify("005935", "삼성전자우", set(), "stock") == "우선주"
 
 
+class TestCompactMoney:
+    """지표 타일은 여섯 칸으로 나뉘어 긴 금액이 잘린다('1,622…')."""
+
+    def test_가장_큰_단위만_남긴다(self):
+        from src.analysis.money import compact, money
+
+        value = 1_622_572_100_000_000  # 1,622조 5,721억원
+        assert money(value) == "1,622조 5,721억원"
+        assert compact(value) == "1,623조원"
+
+    def test_통화와_부호를_지킨다(self):
+        from src.analysis.money import compact
+
+        assert compact(490_550_000_000_000, "USD") == "491조달러"
+        assert compact(345_600_000_000) == "3,456억원"
+        assert compact(-54_400_000_000) == "-544억원"
+        assert compact(52_000_000) == "52,000,000원"  # 1억 미만은 그대로
+        assert compact(None, empty="—") == "—"
+
+
 class TestIndustryMismatch:
     """업종이 틀리면 동종업계 비교의 모집단이 틀린다. 숫자 검증기로는 안 잡힌다."""
 
