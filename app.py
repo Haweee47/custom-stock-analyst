@@ -24,7 +24,6 @@ from src.analysis.gemini_analyzer import (
 )
 from src.analysis.report_spec import LENGTHS, PERSPECTIVES
 from src.analysis.screens import apply_screens, available_screens, screen_counts
-from src.analysis.money import compact as money_compact
 from src.analysis.money import money, price
 from src.analysis.money import unit_of as money_unit
 from src.analysis.usage_limit import (
@@ -152,6 +151,21 @@ METRIC_LABELS = {
     "ROE_계산": ("ROE", "{:,.2f}%"),
     "ROA": ("ROA", "{:,.2f}%"),
 }
+
+
+def money_compact(value, currency: str = "KRW", empty: str = "데이터 없음") -> str:
+    """타일용 짧은 금액 표기.
+
+    배포 환경(Streamlit Cloud)은 새 커밋을 받아도 파이썬 프로세스를 새로 띄우지 않고
+    스크립트만 다시 실행한다. 그래서 app.py는 새 코드로 읽히는데 이미 임포트된 모듈은
+    옛 것이 그대로 남는다. 모듈에 새로 만든 이름을 위에서 import 하면
+    `ImportError: cannot import name 'compact'`로 앱 전체가 죽는다(실제로 죽었다).
+    호출 시점에 찾고, 없으면 기존 표기로 물러난다 — 화면이 조금 길어질 뿐 앱은 산다.
+    """
+    from src.analysis import money as module
+
+    formatter = getattr(module, "compact", None)
+    return formatter(value, currency, empty) if formatter else money(value, currency, empty)
 
 
 METRIC_CSS = """<style>
