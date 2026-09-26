@@ -1550,6 +1550,64 @@ class TestDomesticPrices:
         assert classify("005935", "삼성전자우", set(), "stock") == "우선주"
 
 
+class TestNewsSource:
+    """네이버 뉴스 페이지도 410으로 닫혔다. 이것 때문에 종합·이슈 관점이 통째로 죽었다."""
+
+    @staticmethod
+    def _response():
+        class Fake:
+            @staticmethod
+            def raise_for_status():
+                return None
+
+            @staticmethod
+            def json():
+                return [
+                    {
+                        "items": [
+                            {
+                                "title": "&quot;돈 더 줘도 안 판다&quot;…가비아 공개매수 무산",
+                                "officeName": "파이낸셜뉴스",
+                                "datetime": "202609251306",
+                                "body": "기사 본문은 언론사 저작물이라 쓰지 않는다",
+                            },
+                            {  # 같은 기사가 다른 매체로 또 온다
+                                "title": "&quot;돈 더 줘도 안 판다&quot;…가비아 공개매수 무산",
+                                "officeName": "조선일보",
+                                "datetime": "202609251400",
+                            },
+                        ]
+                    },
+                    {"items": [{"title": "연휴 노린 올빼미 공시", "officeName": "매경", "datetime": "20260924"}]},
+                ]
+
+        return Fake()
+
+    def test_제목_날짜_언론사만_남긴다(self, monkeypatch):
+        # 본문은 언론사 저작물이라 수집하지도 AI에 넘기지도 않는다
+        from src.collectors import news_collector as module
+
+        monkeypatch.setattr(module.requests, "get", lambda *a, **k: self._response())
+        items = module.fetch_news("079940")
+        assert [set(item) for item in items] == [{"제목", "언론사", "일자"}] * 2
+        assert items[0]["제목"] == '"돈 더 줘도 안 판다"…가비아 공개매수 무산'  # HTML 엔티티 해제
+        assert items[0]["일자"] == "2026.09.25"
+
+    def test_같은_기사가_여러_매체로_와도_한_번만(self, monkeypatch):
+        from src.collectors import news_collector as module
+
+        monkeypatch.setattr(module.requests, "get", lambda *a, **k: self._response())
+        titles = [item["제목"] for item in module.fetch_news("079940")]
+        assert len(titles) == len(set(titles)) == 2
+
+    def test_날짜_형식이_이상하면_원문을_남긴다(self):
+        from src.collectors.news_collector import _news_date
+
+        assert _news_date("202609251306") == "2026.09.25"
+        assert _news_date("어제") == "어제"
+        assert _news_date(None) == ""
+
+
 class TestCompactMoney:
     """지표 타일은 여섯 칸으로 나뉘어 긴 금액이 잘린다('1,622…')."""
 

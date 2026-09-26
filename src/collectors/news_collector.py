@@ -3,6 +3,7 @@
 뉴스는 제목·날짜·언론사만 가져온다. 기사 본문은 언론사 저작물이므로
 수집하거나 저장하지 않고, AI에도 제목만 전달한다.
 """
+import html
 import time
 from datetime import datetime, timedelta
 
@@ -12,7 +13,8 @@ from bs4 import BeautifulSoup
 
 from src.collectors import indicators
 
-NEWS_URL = "https://finance.naver.com/item/news_news.naver"
+# 옛 뉴스 페이지(finance.naver.com/item/news_news.naver)도 2026-09에 410으로 닫혔다.
+NEWS_URL = "https://m.stock.naver.com/api/news/stock/{code}"
 # 예전 일별 시세 페이지(finance.naver.com/item/sise_day.naver)는 2026-09에 410으로 닫혔다.
 # 시가총액 페이지와 같은 개편이다. 이제는 차트가 쓰는 JSON API에서 받는다.
 CHART_URL = "https://api.stock.naver.com/chart/domestic/item/{code}/day"
@@ -27,35 +29,49 @@ def _soup(url: str, params: dict) -> BeautifulSoup:
     return BeautifulSoup(response.text, "lxml")
 
 
+def _news_date(stamp: str) -> str:
+    """'202609251306' → '2026.09.25'. 읽을 수 없으면 원문 그대로."""
+    text = str(stamp or "")
+    if len(text) >= 8 and text[:8].isdigit():
+        return f"{text[:4]}.{text[4:6]}.{text[6:8]}"
+    return text
+
+
 def fetch_news(stock_code: str, limit: int = 15) -> list[dict]:
-    """최근 뉴스 제목 목록. 본문은 가져오지 않는다."""
-    soup = _soup(
-        NEWS_URL,
-        {"code": stock_code, "page": 1, "sm": "title_entity_id.basic", "clusterId": ""},
+    """최근 뉴스 제목 목록. 본문은 가져오지 않는다.
+
+    예전 뉴스 페이지(finance.naver.com/item/news_news.naver)는 2026-09에 410으로
+    닫혔다. 시가총액·일별시세와 같은 개편이다. 이것 때문에 뉴스를 쓰는 관점
+    (이슈·트렌드, 종합)은 리포트 생성이 통째로 실패했다.
+
+    응답에는 기사 본문(body)도 들어 있지만 쓰지 않는다. 언론사 저작물이므로
+    제목·날짜·언론사만 남긴다.
+    """
+    response = requests.get(
+        NEWS_URL.format(code=stock_code),
+        params={"pageSize": max(limit, 10), "page": 1},
+        headers=HEADERS,
+        timeout=15,
     )
+    response.raise_for_status()
 
     items, seen = [], set()
-    for tr in soup.select("table.type5 tr"):
-        link = tr.select_one("td.title a")
-        if link is None:
-            continue
-        title = link.get_text(strip=True)
-        # 같은 기사가 여러 매체로 중복 노출되므로 제목 기준으로 걸러낸다
-        if title in seen:
-            continue
-        seen.add(title)
-
-        press = tr.select_one("td.info")
-        date = tr.select_one("td.date")
-        items.append(
-            {
-                "제목": title,
-                "언론사": press.get_text(strip=True) if press else "",
-                "일자": date.get_text(strip=True) if date else "",
-            }
-        )
-        if len(items) >= limit:
-            break
+    for cluster in response.json() or []:
+        for item in cluster.get("items") or []:
+            title = html.unescape(str(item.get("title") or "")).strip()
+            # 같은 기사가 여러 매체로 중복 노출되므로 제목 기준으로 걸러낸다
+            if not title or title in seen:
+                continue
+            seen.add(title)
+            items.append(
+                {
+                    "제목": title,
+                    "언론사": item.get("officeName") or "",
+                    "일자": _news_date(item.get("datetime")),
+                }
+            )
+            if len(items) >= limit:
+                return items
     return items
 
 

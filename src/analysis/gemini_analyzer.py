@@ -30,7 +30,7 @@ from src.analysis.report_spec import (  # noqa: E402
 )
 
 from src.analysis import money as money_module  # noqa: E402
-from src.analysis import peer, trend, usage_limit, verify  # noqa: E402
+from src.analysis import experiment, peer, trend, usage_limit, verify  # noqa: E402
 # app.py가 여기서 가져다 쓰므로 그대로 다시 내보낸다
 from src.analysis.usage_limit import (  # noqa: E402,F401
     DAILY_LIMIT,
@@ -468,6 +468,7 @@ def build_prompt(
     disclosures: list[dict] | None = None,
     universe: pd.DataFrame | None = None,
     overview: str | None = None,
+    arm: str = "A",
 ) -> str:
     from src.collectors import markets
 
@@ -515,7 +516,7 @@ def build_prompt(
 
 [분량: {length}]
 - 섹션 {size['섹션수']}, {size['본문길이']}
-- 핵심포인트 {size['포인트수']}
+- 핵심포인트 {size['포인트수']}{experiment.prompt_suffix(arm)}
 
 [출력 전 자기 점검]
 - 금액은 위 데이터에 적힌 표기를 그대로 옮겼는가? 조와 억을 바꿔 쓰지 않았는가?
@@ -553,7 +554,10 @@ def analyze(
 
     usage_limit.check(length, session=not batch)
 
-    prompt = build_prompt(row, perspective, length, tech, news, disclosures, universe, overview)
+    arm = experiment.assign(stock_code)
+    prompt = build_prompt(
+        row, perspective, length, tech, news, disclosures, universe, overview, arm
+    )
     peers = (
         peer.sector_stats(universe, row.get("업종_소분류"), row) if universe is not None else None
     )
@@ -593,6 +597,7 @@ def analyze(
         "검증": checked,
         "생성시도": len(attempts),
         "토큰": {"입력": usage.prompt_token_count, "출력": usage.candidates_token_count},
+        "실험군": arm,
     }
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -602,6 +607,24 @@ def analyze(
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     temp.replace(path)
+
+    # 실험 관측치. 비용은 채택본이 아니라 재시도까지 실제로 태운 출력 토큰이 기준이다.
+    experiment.log({
+        "종목코드": stock_code,
+        "종목명": row["종목명"],
+        "국가": row.get("국가"),
+        "관점": perspective,
+        "분량": length,
+        "군": arm,
+        "입력토큰": usage.prompt_token_count,
+        "출력토큰": usage.candidates_token_count,
+        "출력토큰합": sum(a[1].candidates_token_count for a in attempts),
+        "생성시도": len(attempts),
+        "통과": bool(checked["통과"]),
+        "대조율": checked["대조율"],
+        "미확인건수": len(checked.get("미확인", [])),
+    })
+
     # 재시도까지 실제 호출한 횟수만큼 사용량을 센다
     for _ in attempts:
         usage_limit.record(length, session=not batch)
@@ -668,14 +691,26 @@ def gather_context(row, perspective: str) -> dict:
         except Exception as exc:
             print(f"[시세 조회 실패] {code}: {type(exc).__name__}: {exc}", file=sys.stderr)
             context["tech"] = {}
+    # 뉴스·공시는 없으면 그 블록만 빠지면 된다. 예전에는 예외가 그대로 올라가
+    # 리포트 생성 전체가 죽었다 — 네이버 뉴스 페이지가 410으로 닫히자 종합·이슈
+    # 관점이 '리포트 생성 중 문제가 발생했습니다'만 내놨다(2026-09).
+    # 한 출처가 막혔다고 리포트를 못 만들 이유는 없다.
     if "뉴스" in needed and markets.has_news(country):
-        from src.collectors.news_collector import fetch_news
+        try:
+            from src.collectors.news_collector import fetch_news
 
-        context["news"] = fetch_news(code)
+            context["news"] = fetch_news(code)
+        except Exception as exc:
+            print(f"[뉴스 조회 실패] {code}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            context["news"] = []
     if "공시" in needed and markets.has_disclosure(country):
-        from src.api.disclosure import fetch_important
+        try:
+            from src.api.disclosure import fetch_important
 
-        context["disclosures"] = fetch_important(code)
+            context["disclosures"] = fetch_important(code)
+        except Exception as exc:
+            print(f"[공시 조회 실패] {code}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            context["disclosures"] = []
 
     return context
 
