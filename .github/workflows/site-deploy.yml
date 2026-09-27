@@ -1,0 +1,71 @@
+name: 웹사이트 배포
+
+# 저장된 리포트를 정적 페이지로 만들어 GitHub Pages에 올린다.
+#
+# Streamlit Community Cloud는 약관상 상업적 이용이 금지돼 있어 광고를 붙일 수 없고,
+# 주소가 하나뿐이라 검색엔진이 색인할 것도 없다. 정적 페이지는 리포트마다 주소가
+# 생겨 검색 유입 경로가 되고, 서버가 없으니 잠들거나 옛 모듈이 남는 문제도 없다.
+#
+# 리포트를 새로 만들지 않고 이미 있는 캐시만 읽으므로 Gemini 호출이 없다(비용 0).
+
+on:
+  # 데이터 갱신이 끝난 뒤에 돌린다. 그래야 그날 새로 만든 리포트가 사이트에 들어간다.
+  workflow_run:
+    workflows: ["일일 데이터 갱신"]
+    types: [completed]
+  workflow_dispatch:
+
+# 배포는 한 번에 하나만. 겹치면 뒤엣것이 이긴다.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 라이브러리 설치
+        run: pip install -r requirements.txt
+
+      - name: 페이지 생성
+        run: python site_build.py
+
+      - name: 결과 확인
+        # 빈 사이트를 올리면 검색엔진이 색인해 둔 페이지가 통째로 사라진다.
+        run: |
+          COUNT=$(find site -name "*.html" | wc -l)
+          echo "생성된 페이지 $COUNT쪽"
+          if [ "$COUNT" -lt 50 ]; then
+            echo "::error::페이지가 너무 적습니다($COUNT쪽). 배포를 멈춥니다."
+            exit 1
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
