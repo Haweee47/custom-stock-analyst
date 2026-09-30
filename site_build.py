@@ -16,6 +16,7 @@
 import argparse
 import html
 import json
+import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -41,8 +42,10 @@ from src.report.report_view import (  # noqa: E402
 OUT = ROOT / "site"
 SITE_NAME = "리포트 셀프바"
 TAGLINE = "애널리스트가 다루지 않는 종목까지, 오늘 데이터로 만드는 AI 기업 리포트"
-# 배포 주소가 정해지면 여기만 바꾸면 sitemap·canonical이 함께 따라간다.
-BASE_URL = "https://report-selfbar.pages.dev"
+
+# 도메인을 사면 환경변수 SITE_BASE_URL만 바꾸면 canonical·사이트맵·robots가 함께 따라간다.
+# 주소가 흩어져 있으면 옮길 때 일부만 바뀌어 검색엔진이 중복 페이지로 본다.
+BASE_URL = os.getenv("SITE_BASE_URL", "https://report-selfbar.pages.dev").rstrip("/")
 
 MARKET_SLUGS = {"KR": "kr", "US": "us", "JP": "jp", "CN": "cn"}
 MARKET_NAMES = {code: name for name, code in MARKET_CODES.items()}
@@ -268,8 +271,10 @@ def build(limit: int | None = None) -> int:
         )
         urls.append(url)
 
+    write_search_index(by_market)
     write_home(by_market, reports, updated, urls)
     write_policy_pages(len(reports), updated, urls)
+    write_not_found(len(reports), updated)
     write_sitemap(urls)
     (OUT / "robots.txt").write_text(
         f"User-agent: *\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n", encoding="utf-8"
@@ -278,6 +283,68 @@ def build(limit: int | None = None) -> int:
     print(f"생성 {made:,}쪽 · 건너뜀 {skipped}건 · 출력 {OUT}")
     print("시장별:", {MARKET_NAMES[k]: len(v) for k, v in by_market.items()})
     return 0
+
+
+def write_search_index(by_market) -> None:
+    """검색용 목록. 서버가 없으므로 브라우저가 이 파일을 받아 직접 거른다.
+
+    리포트가 수천 건이 돼도 이 파일은 수백 KB라 한 번 받아 두면 입력마다 즉시 걸러진다.
+    """
+    items = []
+    for market_code, entries in by_market.items():
+        slug = MARKET_SLUGS[market_code]
+        for row, result, href in entries:
+            items.append(
+                {
+                    "n": str(row["종목명"]),
+                    "c": str(row["종목코드"]),
+                    "u": f"{slug}/{href}",
+                    "m": MARKET_NAMES[market_code],
+                }
+            )
+    (OUT / "data").mkdir(parents=True, exist_ok=True)
+    (OUT / "data" / "index.json").write_text(
+        json.dumps(items, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+
+
+SEARCH_JS = """
+<script>
+(function () {
+  var box = document.getElementById('q');
+  var out = document.getElementById('qout');
+  if (!box) return;
+  var items = null;
+  fetch('data/index.json').then(function (r) { return r.json(); }).then(function (d) { items = d; });
+  box.addEventListener('input', function () {
+    var q = box.value.trim().toLowerCase();
+    if (!items || q.length < 1) { out.innerHTML = ''; return; }
+    var hit = items.filter(function (it) {
+      return it.n.toLowerCase().indexOf(q) >= 0 || it.c.indexOf(q) === 0;
+    }).slice(0, 30);
+    out.innerHTML = hit.length
+      ? hit.map(function (it) {
+          return '<a class="card" href="' + it.u + '"><b>' + it.n + '</b>'
+               + '<small>' + it.c + ' · ' + it.m + '</small></a>';
+        }).join('')
+      : '<p class="site-small">리포트가 아직 없는 종목입니다. 매일 새로 만들어 올리고 있습니다.</p>';
+  });
+})();
+</script>
+"""
+
+
+def write_not_found(count: int, updated: str) -> None:
+    body = (
+        '<div class="hero"><h1>없는 주소입니다</h1>'
+        '<p>리포트가 아직 만들어지지 않았거나 주소가 바뀌었을 수 있습니다.</p>'
+        '<p><a href="/">홈에서 종목 찾기</a></p></div>'
+    )
+    (OUT / "404.html").write_text(
+        page("페이지를 찾을 수 없습니다 | " + SITE_NAME, "없는 주소입니다",
+             f"{BASE_URL}/404.html", body, count=count, updated=updated),
+        encoding="utf-8",
+    )
 
 
 def write_home(by_market, reports, updated, urls) -> None:
@@ -304,8 +371,13 @@ def write_home(by_market, reports, updated, urls) -> None:
      기계가 원본과 대조합니다. 대조 결과를 리포트에 함께 표시합니다.</p>
 </div>
 <div class="market-tabs">{tabs}</div>
+<h2>종목 찾기</h2>
+<input id="q" class="search" type="search" placeholder="종목명 또는 종목코드 (예: 삼성전자, 005930)"
+       autocomplete="off" aria-label="종목 검색">
+<div id="qout" class="card-list" style="margin-top:12px"></div>
 <h2>최근 작성</h2>
 <div class="card-list">{''.join(cards)}</div>
+{SEARCH_JS}
 """
     (OUT / "index.html").write_text(
         page(f"{SITE_NAME} — {TAGLINE}", TAGLINE, f"{BASE_URL}/", body,
