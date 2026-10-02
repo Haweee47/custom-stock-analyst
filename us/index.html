@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>미국주식 AI 기업 리포트 | 리포트 셀프바</title>
+<meta name="description" content="미국주식 173종목 분석">
+<link rel="canonical" href="https://report-selfbar.pages.dev/us/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="미국주식 AI 기업 리포트 | 리포트 셀프바">
+<meta property="og:description" content="미국주식 173종목 분석">
+<meta property="og:url" content="https://report-selfbar.pages.dev/us/">
+<meta property="og:site_name" content="리포트 셀프바">
+
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin:0; background:#f6f7f9; color:#1b1f27;
+  font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif; }
+a { color:#1a4fd6; text-decoration:none; }
+a:hover { text-decoration:underline; }
+.site-top { display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:14px 20px; background:#0f1b2d; color:#fff; }
+.site-logo { color:#fff; font-weight:700; font-size:18px; }
+.site-nav a { color:#9fb3d1; margin-left:14px; font-size:14px; }
+.site-main { max-width:980px; margin:0 auto; padding:24px 16px 48px; }
+.site-foot { max-width:980px; margin:0 auto; padding:24px 16px 56px; color:#5f6672; font-size:13px; }
+.site-disclaimer { background:#fff; border:1px solid #e5e8ec; border-radius:8px; padding:12px 14px; }
+.site-small { color:#8a919c; }
+.hero { background:#fff; border:1px solid #e5e8ec; border-radius:12px; padding:28px 24px; margin-bottom:20px; }
+.hero h1 { margin:0 0 8px; font-size:26px; }
+.hero p { margin:6px 0; color:#4a5261; }
+.hero .stat { display:inline-block; margin-right:18px; font-weight:700; color:#0f1b2d; }
+.card-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+.card { background:#fff; border:1px solid #e5e8ec; border-radius:10px; padding:14px 16px; }
+.card b { display:block; font-size:16px; margin-bottom:4px; }
+.card small { color:#6b7280; }
+.card p { margin:8px 0 0; font-size:14px; color:#3d4452; line-height:1.5; }
+.market-tabs { margin:18px 0 10px; }
+.market-tabs a { display:inline-block; padding:6px 12px; margin-right:6px; border-radius:999px;
+  background:#fff; border:1px solid #e5e8ec; font-size:14px; }
+.crumb { font-size:13px; color:#6b7280; margin-bottom:12px; }
+.search { width:100%; padding:12px 14px; font-size:15px; border:1px solid #d7dbe0; border-radius:8px; }
+.doc { background:#fff; border:1px solid #e5e8ec; border-radius:12px; padding:24px; line-height:1.7; }
+.doc h2 { font-size:18px; margin-top:24px; }
+
+
+/* 한 장의 지면처럼 보이는 것이 이 스타일의 목표다.
+
+   Streamlit은 st.html을 부를 때마다 별도 블록을 만든다. 조각마다 테두리를 두르면
+   리포트가 아니라 카드 대시보드처럼 보이므로, 조각에는 테두리를 두지 않고 흰 지면
+   위에 얇은 괘선으로만 구획을 나눈다. 배경색은 모든 면에 명시한다. 이용자가 다크
+   테마로 바꾸면 배경을 지정하지 않은 상자가 어두워지면서 검은 글자가 사라진다. */
+
+.rpt {
+  font-family: "Pretendard", "Malgun Gothic", "맑은 고딕",
+               "Apple SD Gothic Neo", system-ui, sans-serif;
+  color: #33383f; font-size: 13px; line-height: 1.72;
+  background: #ffffff; -webkit-font-smoothing: antialiased;
+}
+.rpt-inner { padding: 0 2px; }
+.rpt-top { height: 3px; background: #12386b; }
+.rpt-band {
+  display: flex; justify-content: space-between; align-items: baseline;
+  flex-wrap: wrap; gap: 4px 12px;
+  border-bottom: 1px solid #ecedf1; padding: 9px 2px 7px;
+  font-size: 10.5px; color: #6e7480; letter-spacing: .08em; text-transform: uppercase;
+}
+.rpt-brand { font-weight: 800; color: #12386b; letter-spacing: .14em; }
+
+.rpt-title {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  gap: 8px 20px; flex-wrap: wrap; padding-top: 14px;
+}
+.rpt-name {
+  font-size: 28px; font-weight: 800; color: #12386b; margin: 0;
+  letter-spacing: -.03em; line-height: 1.15;
+}
+.rpt-name small { font-size: 15px; font-weight: 600; color: #6e7480; letter-spacing: 0; }
+.rpt-meta {
+  font-size: 10.5px; color: #6e7480; text-align: right; line-height: 1.75;
+  white-space: nowrap;
+}
+.rpt-headline {
+  font-size: 17px; font-weight: 700; color: #14161a; margin: 10px 0 0;
+  padding-bottom: 13px; border-bottom: 2px solid #12386b;
+  letter-spacing: -.02em; line-height: 1.5; word-break: keep-all;
+}
+
+/* 수치 상자 - 표는 담아 두는 편이 읽기 쉬우므로 여기만 테두리를 남긴다 */
+.rpt-box {
+  border: 1px solid #d7dae0; background: #ffffff;
+  margin-bottom: 10px; overflow: hidden;
+}
+.rpt-box h4 {
+  margin: 0; padding: 6px 11px; font-size: 10.5px; font-weight: 700;
+  background: #f2f5fa; color: #12386b; border-bottom: 1px solid #d7dae0;
+  letter-spacing: .08em;
+}
+.rpt-scroll { overflow-x: auto; }
+
+table.rpt-t { width: 100%; border-collapse: collapse; font-size: 12px; background: #ffffff; }
+table.rpt-t td { padding: 5px 11px; border-bottom: 1px solid #ecedf1; }
+table.rpt-t td:first-child { color: #6e7480; white-space: nowrap; }
+table.rpt-t td:last-child {
+  text-align: right; font-weight: 700; color: #14161a;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+table.rpt-t tr:last-child td { border-bottom: none; }
+
+table.rpt-yr { width: 100%; border-collapse: collapse; font-size: 12px; background: #ffffff; }
+table.rpt-yr th {
+  background: #f2f5fa; color: #12386b; font-size: 10.5px; font-weight: 700;
+  padding: 6px 9px; border-bottom: 1px solid #d7dae0; text-align: right; white-space: nowrap;
+}
+table.rpt-yr th:first-child { text-align: left; }
+table.rpt-yr td {
+  padding: 5px 9px; border-bottom: 1px solid #ecedf1; text-align: right;
+  font-variant-numeric: tabular-nums; color: #14161a; font-weight: 600; white-space: nowrap;
+}
+table.rpt-yr td:first-child { text-align: left; color: #6e7480; font-weight: 400; }
+table.rpt-yr tr:last-child td { border-bottom: none; }
+
+.up { color: #c0392b; } .down { color: #1f5fa8; }
+
+/* 핵심포인트 - 리포트에서 가장 먼저 읽히는 자리라 지면과 톤을 다르게 준다 */
+.rpt-points {
+  margin: 2px 0 20px; padding: 14px 18px 14px 20px; background: #f2f5fa;
+  border-left: 3px solid #12386b; list-style: none;
+}
+.rpt-points li {
+  margin: 0 0 8px; font-size: 13px; line-height: 1.65; padding-left: 13px;
+  position: relative; word-break: keep-all; color: #14161a;
+}
+.rpt-points li:before {
+  content: ""; position: absolute; left: 0; top: .62em;
+  width: 4px; height: 4px; border-radius: 50%; background: #12386b;
+}
+.rpt-points li:last-child { margin-bottom: 0; }
+
+.rpt-sec { margin-bottom: 19px; }
+.rpt-sec h3 {
+  font-size: 14.5px; font-weight: 700; color: #12386b; margin: 0 0 7px;
+  padding-left: 10px; border-left: 3px solid #1a4d8f;
+  letter-spacing: -.02em; line-height: 1.45; word-break: keep-all;
+}
+.rpt-sec p { margin: 0; font-size: 13px; line-height: 1.78; word-break: keep-all; }
+
+/* 체크포인트와 리스크 - 좁은 화면에서는 두 칸이 눌리므로 접어서 쌓는다 */
+.rpt-cols { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.rpt-half {
+  flex: 1 1 260px; min-width: 0; background: #ffffff;
+  border: 1px solid #d7dae0; border-top: 2px solid #12386b; padding: 12px 15px;
+}
+.rpt-half h4 {
+  margin: 0 0 9px; font-size: 11px; font-weight: 700; color: #12386b;
+  letter-spacing: .06em;
+}
+.rpt-half ul { margin: 0; padding-left: 17px; }
+.rpt-half li { font-size: 12.3px; line-height: 1.65; margin-bottom: 6px; word-break: keep-all; }
+.rpt-half li:last-child { margin-bottom: 0; }
+
+/* 숫자 대조 결과 - 이 리포트가 다른 AI 리포트와 다른 점이라 눈에 띄게 둔다 */
+.rpt-verify {
+  font-size: 12px; line-height: 1.6; padding: 10px 14px; margin-bottom: 12px;
+  border: 1px solid #d7dae0; border-left: 3px solid #2f6b52; background: #eef5f1;
+  color: #14161a; word-break: keep-all;
+}
+.rpt-verify.warn { border-left-color: #9d6b1f; background: #faf3e6; }
+.rpt-verify .hint { margin-top: 5px; font-size: 11px; color: #6e7480; }
+
+.rpt-note {
+  background: #ffffff; border: 1px solid #d7dae0; padding: 13px 16px;
+}
+.rpt-note b { color: #12386b; font-size: 11px; letter-spacing: .06em; }
+.rpt-note div.body { font-size: 12.3px; line-height: 1.7; margin-top: 5px; word-break: keep-all; }
+.rpt-foot {
+  margin-top: 11px; padding-top: 10px; border-top: 1px solid #ecedf1;
+  font-size: 10.5px; color: #6e7480; line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .rpt-name { font-size: 23px; }
+  .rpt-headline { font-size: 15px; }
+  .rpt-meta { text-align: left; }
+}
+
+</style>
+</head>
+<body>
+<header class="site-top">
+  <a class="site-logo" href="../">리포트 셀프바</a>
+  <nav class="site-nav"><a href="../kr/">국내</a><a href="../us/">미국</a><a href="../jp/">일본</a><a href="../cn/">중국</a></nav>
+</header>
+<main class="site-main">
+<p class="crumb"><a href="..">홈</a> › 미국주식</p><div class='hero'><h1>미국주식 리포트 173건</h1><p>애널리스트가 다루지 않는 종목까지, 오늘 데이터로 만드는 AI 기업 리포트</p></div><div class="card-list"><a class="card" href="AAPL.html"><b>애플</b><small>AAPL · 전화 및 소형 장치</small><p>애플, 3년 연속 매출 및 영업이익 성장세 기록</p></a><a class="card" href="ABBV.html"><b>애브비</b><small>ABBV · 제약</small><p>영업이익률 35.15% 기록하며 제약 업종 상위 10% 수준의 수익성 달성</p></a><a class="card" href="ABNB.html"><b>에어비앤비</b><small>ABNB · 온라인 서비스</small><p>에어비앤비, 매출 122억달러 달성했으나 영업이익률은 21.35%로 소폭 하락</p></a><a class="card" href="ABT.html"><b>애보트 래보라토리</b><small>ABT · 의료 장비, 물품 및 유통</small><p>매출 성장을 상회하는 이익 개선세로 영업이익률 19.22% 기록</p></a><a class="card" href="ACN.html"><b>액센추어</b><small>ACN · IT 서비스 및 컨설팅</small><p>액센추어, 3년 연속 매출 및 영업이익 동반 성장세 확인</p></a><a class="card" href="ADBE.html"><b>어도비</b><small>ADBE · 소프트웨어</small><p>매출과 영업이익 동반 성장세 지속하며 36.63% 영업이익률 달성</p></a><a class="card" href="ADI.html"><b>애널로그 디바이시스</b><small>ADI · 반도체</small><p>매출 회복에 따른 영업이익률 개선으로 반도체 업종 중앙값 상회</p></a><a class="card" href="ADP.html"><b>오토매틱 데이터 프로세싱</b><small>ADP · 고용 서비스</small><p>매출 성장을 상회하는 영업이익률 개선, 고용 서비스 업종 내 수익성 1위</p></a><a class="card" href="AEM.html"><b>애그니코 이글 마인스</b><small>AEM · 금</small><p>매출 성장을 상회하는 이익 개선세, 영업이익률 53.23% 기록</p></a><a class="card" href="AMAT.html"><b>어플라이드 머티어리얼즈</b><small>AMAT · 반도체 장비 및 테스트</small><p>매출 성장을 상회하는 수익성 개선으로 영업이익률 30.00% 달성</p></a><a class="card" href="AMD.html"><b>AMD(어드밴스드 마이크로 디바이시스)</b><small>AMD · 반도체</small><p>AMD, 3년 연속 매출 성장세 속 영업이익률 업종 중앙값의 4.4배 기록</p></a><a class="card" href="AMGN.html"><b>암젠</b><small>AMGN · 제약</small><p>암젠, 3년간 매출 및 영업이익의 지속적인 성장세 기록</p></a><a class="card" href="AMZN.html"><b>아마존닷컴</b><small>AMZN · 백화점</small><p>아마존닷컴, 매출 증가 속 영업이익률 12.40%로 수익성 개선 지속</p></a><a class="card" href="ANET.html"><b>아리스타 네트웍스</b><small>ANET · 통신 및 네트워킹</small><p>매출과 영업이익의 동반 성장 속 업종 상위 4%의 수익성 달성</p></a><a class="card" href="APH.html"><b>암페놀</b><small>APH · 전자 장비 및 부품</small><p>시가총액 2,041억달러의 전자 장비 부품 1위 기업, 3년 연속 매출 및 영업이익 성장세</p></a><a class="card" href="APP.html"><b>앱러빈</b><small>APP · 소프트웨어</small><p>앱러빈, 3개년 연속 매출 성장과 영업이익률 76.37% 달성으로 수익성 극대화</p></a><a class="card" href="ARM.html"><b>암 홀딩스 ADR</b><small>ARM · 반도체</small><p>매출 성장세 확대에도 영업이익률 18.46%로 하락하며 수익성 희석</p></a><a class="card" href="ASML.html"><b>ASML 홀딩 ADR</b><small>ASML · 반도체 장비 및 테스트</small><p>2025년 영업이익률 34.65% 기록하며 업종 대비 월등한 수익성 증명</p></a><a class="card" href="AVGO.html"><b>브로드컴</b><small>AVGO · 반도체</small><p>매출 성장과 수익성 개선이 동반된 2025년 영업이익 262억달러 달성</p></a><a class="card" href="AXP.html"><b>아메리칸 익스프레스</b><small>AXP · 소비자 대출</small><p>아메리칸 익스프레스, 2025년 매출과 이익의 동반 성장 및 마진 개선</p></a><a class="card" href="AZN.html"><b>아스트라제네카</b><small>AZN · 제약</small><p>매출 성장을 상회하는 이익 개선세로 제약 업종 내 높은 수익성 증명</p></a><a class="card" href="BABA.html"><b>알리바바 그룹 홀딩 ADR</b><small>BABA · 온라인 서비스</small><p>매출 성장에도 불구하고 영업이익 적자 전환으로 수익성 저하 지속</p></a><a class="card" href="BAC.html"><b>뱅크오브아메리카</b><small>BAC · 은행</small><p>2025년 매출 감소에도 수익성 개선으로 영업이익률 59.65% 달성</p></a><a class="card" href="BA.html"><b>보잉</b><small>BA · 항공우주 및 방위</small><p>보잉, 2025년 매출 895억달러 기록하며 영업손실 폭은 다소 축소</p></a><a class="card" href="BBVA.html"><b>방코 빌바오 비스카야 아르헨타리아 ADR</b><small>BBVA · 은행</small><p>2025년 영업이익 230억달러 기록하며 39.36%의 영업이익률 달성</p></a><a class="card" href="BHP.html"><b>BHP 그룹 ADR</b><small>BHP · 다각적 채굴</small><p>BHP 그룹, 2026년 영업이익률 49.46% 기록하며 업종 대비 높은 수익성 증명</p></a><a class="card" href="BKNG.html"><b>부킹 홀딩스</b><small>BKNG · 여가 및 오락시설</small><p>매출 성장을 상회하는 이익 창출력과 업종 내 독보적 수익성 기록</p></a><a class="card" href="BLK.html"><b>블랙록</b><small>BLK · 투자 관리 및 펀드 운영</small><p>매출 성장은 지속되었으나 수익성 지표는 둔화된 블랙록의 2025년 재무 실적</p></a><a class="card" href="BMO.html"><b>뱅크 오브 몬트리올</b><small>BMO · 은행</small><p>매출 감소에도 비용 효율화를 통한 영업이익률 24.21% 달성</p></a><a class="card" href="BMY.html"><b>브리스톨-마이어스 스큅</b><small>BMY · 제약</small><p>매출 정체에도 불구하고 비용 효율화를 통해 영업이익률 35.09% 달성</p></a><a class="card" href="BNS.html"><b>뱅크 오브 노바 스코샤</b><small>BNS · 은행</small><p>뱅크 오브 노바 스코샤, 2025년 매출과 영업이익 동반 감소세 기록</p></a><a class="card" href="BNY.html"><b>뉴욕멜론은행</b><small>BNY · 투자 관리 및 펀드 운영</small><p>매출은 정체되었으나 영업이익률 개선으로 수익성 강화</p></a><a class="card" href="BP.html"><b>BP ADR</b><small>BP · 오일, 가스 정제 및 마케팅</small><p>BP, 영업이익률 9.56%로 업종 중앙값 대비 우위 점하며 수익성 개선</p></a><a class="card" href="BRK.A.html"><b>캐터필러</b><small>BRK.A · 소비재 대기업</small><p>매출 유지에도 영업이익률 15.63% 기록하며 마진 압박 직면</p></a><a class="card" href="BRK.B.html"><b>비자</b><small>BRK.B · 소비재 대기업</small><p>버크셔 해서웨이, 2025년 매출 정체 속 영업이익률 하락으로 마진 압박 경험</p></a><a class="card" href="BTI.html"><b>브리티쉬 아메리칸 토바코 ADR</b><small>BTI · 담배</small><p>브리티쉬 아메리칸 토바코, 2년 연속 영업이익 감소 및 마진 축소</p></a><a class="card" href="BUD.html"><b>안호이저부시 인베브 ADR</b><small>BUD · 양조업</small><p>매출 소폭 감소에도 수익성 개선으로 영업이익 162억달러 달성</p></a><a class="card" href="BX.html"><b>블랙스톤</b><small>BX · 투자 관리 및 펀드 운영</small><p>블랙스톤(BX), 3년 연속 매출 및 영업이익 성장세 기록</p></a><a class="card" href="CAT.html"><b>캐터필러</b><small>CAT · 중장비 및 차량</small><p>캐터필러, 2025년 매출 증가에도 마진 축소로 영업이익 13.9% 감소</p></a><a class="card" href="CB.html"><b>처브</b><small>CB · 복합보험 및 중개인</small><p>매출 성장과 마진 개선이 동반된 수익성 강화, 영업이익률 21.35% 기록</p></a><a class="card" href="CEG.html"><b>콘스텔레이션 에너지</b><small>CEG · 전력 유틸리티</small><p>콘스텔레이션 에너지, 2025년 매출 성장에도 마진 축소로 영업이익 26.3% 감소</p></a><a class="card" href="CM.html"><b>캐내디언 임페리얼 뱅크 오브 커머스</b><small>CM · 은행</small><p>매출 감소에도 영업이익률 개선으로 수익성 강화한 캐내디언 임페리얼 뱅크 오브 커머스</p></a><a class="card" href="CNQ.html"><b>캐나다 내추럴 리소시스</b><small>CNQ · 오일, 가스 탐사 및 생산</small><p>매출 성장에도 불구하고 이익률 정체된 캐나다 내추럴 리소시스</p></a><a class="card" href="COF.html"><b>캐피털 원 파이낸셜</b><small>COF · 소비자 대출</small><p>매출 27.5% 성장에도 영업이익 39.3% 감소하며 마진 압박 직면</p></a><a class="card" href="COP.html"><b>코노코필립스</b><small>COP · 오일, 가스 탐사 및 생산</small><p>매출 성장을 상회하는 비용 증가로 영업이익률 19.59% 기록</p></a><a class="card" href="COST.html"><b>코스트코 홀세일</b><small>COST · 할인점</small><p>매출과 영업이익 동반 성장세 속 업종 대비 높은 자산 효율성</p></a><a class="card" href="CRM.html"><b>세일즈포스</b><small>CRM · IT 서비스 및 컨설팅</small><p>매출과 이익의 동반 성장 지속, 영업이익률 21.47%로 업종 상위권 기록</p></a><a class="card" href="CRWD.html"><b>크라우드 스트라이크 홀딩스</b><small>CRWD · 소프트웨어</small><p>매출 성장세 지속에도 불구하고 영업이익 적자 폭 확대되는 수익성 흐름</p></a><a class="card" href="CSCO.html"><b>시스코 시스템즈</b><small>CSCO · 통신 및 네트워킹</small><p>시스코 시스템즈, 매출 성장과 마진 개선으로 영업이익률 25.95% 기록</p></a><a class="card" href="CVS.html"><b>CVS 헬스</b><small>CVS · 의료 시설 및 서비스</small><p>CVS 헬스, 매출 확대와 마진 개선으로 영업이익 23.4% 증가 기록</p></a><a class="card" href="CVX.html"><b>셰브론</b><small>CVX · 통합 오일 및 가스</small><p>매출 감소 속 영업이익 하락폭 확대된 셰브론, 수익성 지표 업종 중앙값 하회</p></a><a class="card" href="C.html"><b>씨티그룹</b><small>C · 투자 은행 및 중개 서비스</small><p>2025년 매출 감소에도 영업이익률 29.47% 기록하며 마진 개선 성공</p></a><a class="card" href="DELL.html"><b>델테크놀로지</b><small>DELL · 컴퓨터 하드웨어</small><p>컴퓨터 하드웨어 부문 시가총액 1위, 매출과 영업이익 동반 성장세</p></a><a class="card" href="DE.html"><b>디어</b><small>DE · 중장비 및 차량</small><p>디어, 매출 및 영업이익 3년 연속 감소세 지속</p></a><a class="card" href="DHR.html"><b>다나허</b><small>DHR · 첨단 의료 장비 및 기술</small><p>다나허, 2025년 매출 246억달러 기록하며 영업이익률 업종 상위 12% 유지</p></a><a class="card" href="DIS.html"><b>월트 디즈니</b><small>DIS · 방송</small><p>매출 성장을 상회하는 영업이익 확대와 업종 평균을 웃도는 수익성 시현</p></a><a class="card" href="ENB.html"><b>엔브리지</b><small>ENB · 오일 및 가스 수송 서비스</small><p>엔브리지, 매출 652억달러 달성하며 외형 성장 지속</p></a><a class="card" href="EQIX.html"><b>이퀴닉스</b><small>EQIX · 특수 REITs</small><p>매출 성장과 마진 개선이 동반된 2025년 영업이익 20억달러 달성</p></a><a class="card" href="EQNR.html"><b>에퀴노르 ADR</b><small>EQNR · 통합 오일 및 가스</small><p>에퀴노르, 2025년 매출 증가에도 마진 축소로 영업이익 감소세 지속</p></a><a class="card" href="ETN.html"><b>이튼</b><small>ETN · 전기 부품 및 장비</small><p>이튼, 2025년 영업이익률 19.99% 기록하며 업종 대비 높은 수익성 유지</p></a><a class="card" href="FCX.html"><b>프리포트 맥모란</b><small>FCX · 특수 채굴 및 금속</small><p>매출 성장을 상회하는 비용 증가로 영업이익률 25.39% 기록</p></a><a class="card" href="FTNT.html"><b>포티넷</b><small>FTNT · 소프트웨어</small><p>포티넷, 3년 연속 매출 성장 이어가며 영업이익률 30.51% 기록</p></a><a class="card" href="GEV.html"><b>GE 버노바</b><small>GEV · 전력 유틸리티</small><p>GE 버노바, 매출 및 영업이익의 동반 성장세 지속</p></a><a class="card" href="GE.html"><b>GE 에어로스페이스</b><small>GE · 항공우주 및 방위</small><p>GE 에어로스페이스, 매출 성장과 마진 개선으로 영업이익 35.2% 확대</p></a><a class="card" href="GILD.html"><b>길리어드 사이언시스</b><small>GILD · 제약</small><p>매출 성장을 상회하는 영업이익 확대와 높은 수익성 지속</p></a><a class="card" href="GLW.html"><b>코닝</b><small>GLW · 전자 장비 및 부품</small><p>코닝, 매출 확대와 수익성 개선이 동반된 견조한 성장세 지속</p></a><a class="card" href="GOOGL.html"><b>알파벳 Class A</b><small>GOOGL · 온라인 서비스</small><p>시가총액 2조 3,430억달러 규모의 알파벳, 매출 증가율 상회하는 이익 성장세 지속</p></a><a class="card" href="GOOG.html"><b>알파벳 Class C</b><small>GOOG · 온라인 서비스</small><p>3년 연속 매출 및 영업이익 성장, 업종 대비 우월한 수익성 기록</p></a><a class="card" href="GS.html"><b>골드만삭스</b><small>GS · 투자 은행 및 중개 서비스</small><p>매출 감소에도 마진 개선으로 영업이익 성장세 이어가</p></a><a class="card" href="HDB.html"><b>HDFC 뱅크 ADR</b><small>HDB · 은행</small><p>HDFC 뱅크 ADR, 매출 성장세 지속에도 영업이익률 42.15%로 전년 대비 하락</p></a><a class="card" href="HD.html"><b>홈디포</b><small>HD · 주택 개조 제품 및 서비스 소매</small><p>매출 성장의 지속에도 불구하고 영업이익률 12.68% 기록하며 마진 압박 직면</p></a><a class="card" href="HOOD.html"><b>로빈후드</b><small>HOOD · 핀테크</small><p>시가총액 1,098억달러의 핀테크 선도 기업, 3년 연속 매출과 이익의 가파른 성장세 지속</p></a><a class="card" href="HSBC.html"><b>HSBC 홀딩스 ADR</b><small>HSBC · 은행</small><p>매출 감소에도 영업이익률 51.25% 달성하며 수익성 개선</p></a><a class="card" href="HWM.html"><b>하우멧 에어로스페이스</b><small>HWM · 항공우주 및 방위</small><p>하우멧 에어로스페이스, 2025년 매출 83억달러 기록하며 영업이익률 25.81% 달성</p></a><a class="card" href="IBKR.html"><b>인터랙티브 브로커스 그룹</b><small>IBKR · 투자 은행 및 중개 서비스</small><p>2025년 영업이익률 45.80% 기록, 매출 대비 빠른 이익 성장세</p></a><a class="card" href="IBM.html"><b>IBM(인터내셔널 비지니스 머신)</b><small>IBM · IT 서비스 및 컨설팅</small><p>2025년 영업이익 103억달러 달성, 마진 개선으로 이익 증가세 뚜렷</p></a><a class="card" href="IBN.html"><b>ICICI 뱅크 ADR</b><small>IBN · 은행</small><p>매출 성장에 따른 영업이익 증가세 지속, 2026년 영업이익률은 45.54% 기록</p></a><a class="card" href="ING.html"><b>ING 그룹 ADR</b><small>ING · 은행</small><p>영업이익률 55.90%로 업종 중앙값 대비 우위 점해</p></a><a class="card" href="INTC.html"><b>인텔</b><small>INTC · 반도체</small><p>매출 감소에도 비용 효율화를 통해 영업이익 손실폭을 대폭 축소한 인텔</p></a><a class="card" href="ISRG.html"><b>인튜이티브 서지컬</b><small>ISRG · 첨단 의료 장비 및 기술</small><p>매출 성장을 상회하는 이익 개선세로 2025년 영업이익 30억달러 달성</p></a><a class="card" href="JNJ.html"><b>존슨앤드존슨</b><small>JNJ · 제약</small><p>매출 성장을 넘어선 수익성 개선, 영업이익률 28.82% 달성</p></a><a class="card" href="JPM.html"><b>제이피모간체이스</b><small>JPM · 은행</small><p>매출 성장의 정체와 수익성 지표의 둔화가 나타난 2025년</p></a><a class="card" href="KLAC.html"><b>KLA</b><small>KLAC · 반도체 장비 및 테스트</small><p>반도체 공정 제어 솔루션의 고수익성 유지와 매출 성장세 지속</p></a><a class="card" href="KO.html"><b>코카콜라</b><small>KO · 무알콜 음료</small><p>영업이익률 31.24% 달성, 효율성 개선으로 수익성 크게 향상</p></a><a class="card" href="LEDRU.html"><b>Leader s Advantage Acquisition Units</b><small>LEDRU · 투자 지주 회사</small><p>사업결합 대상 물색 중인 SPAC, 현재 매출 및 수익 발생하지 않는 상태</p></a><a class="card" href="LIN.html"><b>린드</b><small>LIN · 상품 화학</small><p>매출 성장을 상회하는 이익 창출로 증명한 린드의 수익성 개선</p></a><a class="card" href="LLY.html"><b>일라이 릴리</b><small>LLY · 제약</small><p>매출과 영업이익 동반 고성장 이어가며 업종 내 수익성 상위 4% 달성</p></a><a class="card" href="LMT.html"><b>록히드 마틴</b><small>LMT · 항공우주 및 방위</small><p>매출 성장과 마진 개선으로 영업이익 38.3% 확대</p></a><a class="card" href="LOW.html"><b>로우스 컴퍼니</b><small>LOW · 주택 개조 제품 및 서비스 소매</small><p>매출 회복세와 함께 안정적인 영업이익률을 기록한 로우스 컴퍼니</p></a><a class="card" href="LRCX.html"><b>램 리서치</b><small>LRCX · 반도체 장비 및 테스트</small><p>매출과 이익의 동반 성장세 속 35%대 영업이익률 달성</p></a><a class="card" href="MA.html"><b>마스터카드</b><small>MA · 온라인 서비스</small><p>매출과 이익의 동반 성장으로 59.51%의 높은 영업이익률 달성</p></a><a class="card" href="MCD.html"><b>맥도날드</b><small>MCD · 레스토랑 및 바</small><p>맥도날드, 2025년 매출 및 영업이익 동반 성장세 확인</p></a><a class="card" href="MCK.html"><b>매케슨</b><small>MCK · 제약</small><p>매케슨, 3년 연속 매출 및 영업이익 동반 성장세 확인</p></a><a class="card" href="MDT.html"><b>메드트로닉</b><small>MDT · 의료 장비, 물품 및 유통</small><p>메드트로닉, 2026년 매출 364억달러 기록하며 성장세 유지</p></a><a class="card" href="META.html"><b>메타</b><small>META · 온라인 서비스</small><p>매출 2,010억달러 달성하며 3년 연속 성장세 지속</p></a><a class="card" href="MFG.html"><b>미즈호 파이낸셜그룹 ADR</b><small>MFG · 은행</small><p>영업이익률 39.74% 기록, 업종 중앙값 대비 높은 수익성 유지</p></a><a class="card" href="MO.html"><b>알트리아그룹</b><small>MO · 담배</small><p>매출 감소에도 마진 개선으로 영업이익 32.4% 성장 달성</p></a><a class="card" href="MPC.html"><b>매러선 페트롤리엄</b><small>MPC · 오일, 가스 정제 및 마케팅</small><p>매러선 페트롤리엄, 2025년 매출 감소에도 수익성 개선으로 영업이익 69억달러 기록</p></a><a class="card" href="MRK.html"><b>머크 앤 코</b><small>MRK · 제약</small><p>매출 성장세 이어가는 머크 앤 코, 2025년 영업이익 270억달러 달성</p></a><a class="card" href="MRVL.html"><b>마벨 테크놀로지 그룹</b><small>MRVL · 반도체</small><p>마벨 테크놀로지, 2026년 영업이익 14억달러 기록하며 흑자 전환 달성</p></a><a class="card" href="MSFT.html"><b>마이크로소프트</b><small>MSFT · 소프트웨어</small><p>매출과 영업이익의 동반 상승세 지속, 영업이익률 46.78% 기록</p></a><a class="card" href="MS.html"><b>모간스탠리</b><small>MS · 투자 은행 및 중개 서비스</small><p>매출 성장을 상회하는 이익 창출로 강화된 수익성</p></a><a class="card" href="MUFG.html"><b>미쓰비시 UFJ 파이낸셜 그룹 ADR</b><small>MUFG · 은행</small><p>영업이익률 59.04% 기록, 매출 성장세 상회하는 이익 개선 지속</p></a><a class="card" href="MU.html"><b>마이크론 테크놀로지</b><small>MU · 반도체</small><p>마이크론 테크놀로지, 2025년 영업이익 99억달러 기록하며 마진 개선 가속</p></a><a class="card" href="NEE.html"><b>넥스트에라 에너지</b><small>NEE · 전력 유틸리티</small><p>넥스트에라 에너지, 매출 성장과 마진 개선으로 영업이익 12.5% 증가 달성</p></a><a class="card" href="NEM.html"><b>뉴몬트</b><small>NEM · 금</small><p>뉴몬트, 영업이익률 48.19% 기록하며 업종 대비 높은 수익성 시현</p></a><a class="card" href="NET.html"><b>클라우드플레어</b><small>NET · IT 서비스 및 컨설팅</small><p>클라우드플레어, 매출 22억달러 기록했으나 영업이익률 마진 악화 지속</p></a><a class="card" href="NFLX.html"><b>넷플릭스</b><small>NFLX · 온라인 서비스</small><p>매출 성장과 마진 개선으로 영업이익률 29.49% 기록</p></a><a class="card" href="NOW.html"><b>서비스나우</b><small>NOW · 소프트웨어</small><p>서비스나우, 매출 및 영업이익의 동반 성장세 지속</p></a><a class="card" href="NVDA.html"><b>엔비디아</b><small>NVDA · 반도체</small><p>엔비디아, 매출과 영업이익 3년 연속 동반 상승하며 업종 내 압도적 수익성 입증</p></a><a class="card" href="NVO.html"><b>노보 노디스크 ADR</b><small>NVO · 제약</small><p>매출 성장세는 지속되고 있으나 영업이익률은 46.26%로 다소 둔화</p></a><a class="card" href="NVS.html"><b>노바티스 ADR</b><small>NVS · 제약</small><p>매출 성장을 상회하는 수익성 개선으로 영업이익 187억달러 달성</p></a><a class="card" href="ORCL.html"><b>오라클</b><small>ORCL · 소프트웨어</small><p>오라클, 매출 성장과 마진 개선으로 영업이익 25.0% 급증</p></a><a class="card" href="PANW.html"><b>팔로 알토 네트웍스</b><small>PANW · 소프트웨어</small><p>팔로 알토 네트웍스, 매출액 92억달러 달성하며 업종 상위 수익성 유지</p></a><a class="card" href="PDD.html"><b>핀둬둬 ADR</b><small>PDD · 온라인 서비스</small><p>PDD 홀딩스, 매출 성장 지속에도 영업이익률 하락으로 인한 수익성 조정 국면</p></a><a class="card" href="PEP.html"><b>펩시코</b><small>PEP · 무알콜 음료</small><p>매출 성장세 지속에도 불구하고 수익성 개선은 다소 정체된 펩시코</p></a><a class="card" href="PFE.html"><b>화이자</b><small>PFE · 제약</small><p>매출 감소에도 영업이익률 31.64% 달성하며 수익성 개선</p></a><a class="card" href="PGR.html"><b>프로그레시브</b><small>PGR · 손해보험</small><p>매출과 영업이익의 동반 성장 속 업종 내 압도적인 시가총액 1위 기록</p></a><a class="card" href="PG.html"><b>P&amp;G(프록터 &amp; 갬블)</b><small>PG · 개인 생활 필수 용품</small><p>매출 성장세 지속에도 마진 축소로 영업이익 증가폭 둔화</p></a><a class="card" href="PH.html"><b>파커-하니핀</b><small>PH · 산업용 기계 및 장비</small><p>매출 성장과 마진 개선이 동반된 2026년 영업이익 47억달러 기록</p></a><a class="card" href="PLD.html"><b>프로로지스</b><small>PLD · 상업용 REITs</small><p>물류 REITs 선두 기업 프로로지스, 2025년 영업이익률 업종 중앙값 상회하며 이익 성장 견인</p></a><a class="card" href="PLTR.html"><b>팔란티어 테크놀로지스</b><small>PLTR · 소프트웨어</small><p>매출과 이익의 동반 고성장으로 증명한 수익성 개선과 업종 내 상위권 지표</p></a><a class="card" href="PM.html"><b>필립 모리스 인터내셔널</b><small>PM · 담배</small><p>시가총액 2,845억달러 규모의 국제 담배 기업, 영업이익률 37.99%로 업종 평균 상회</p></a><a class="card" href="PSX.html"><b>필립스 66</b><small>PSX · 오일, 가스 정제 및 마케팅</small><p>필립스 66, 매출 감소에도 비용 효율화를 통한 영업이익 반등 달성</p></a><a class="card" href="QCOM.html"><b>퀄컴</b><small>QCOM · 반도체</small><p>매출 성장에 따른 영업이익 개선 지속, 2025년 영업이익률 27.99% 기록</p></a><a class="card" href="RIO.html"><b>리오 틴토 ADR</b><small>RIO · 다각적 채굴</small><p>리오 틴토, 2025년 영업이익률 31.98% 기록하며 업종 대비 높은 수익성 확보</p></a><a class="card" href="RTX.html"><b>RTX</b><small>RTX · 항공우주 및 방위</small><p>RTX, 매출 증가세 속 영업이익률 개선으로 수익성 강화</p></a><a class="card" href="RY.html"><b>로열 뱅크 오브 캐나다</b><small>RY · 은행</small><p>로열 뱅크 오브 캐나다, 매출 감소에도 마진 개선으로 영업이익 증가세 유지</p></a><a class="card" href="SAN.html"><b>방코 산탄데르 ADR</b><small>SAN · 은행</small><p>방코 산탄데르, 2025년 매출과 영업이익 동반 감소하며 실적 조정세</p></a><a class="card" href="SAP.html"><b>SAP ADR</b><small>SAP · 소프트웨어</small><p>SAP, 매출 증가세 속 영업이익률 28.31%로 업종 중앙값 크게 상회</p></a><a class="card" href="SBUX.html"><b>스타벅스</b><small>SBUX · 레스토랑 및 바</small><p>매출 외형 성장 지속에도 이익률 하락으로 영업이익 42억달러 기록</p></a><a class="card" href="SCCO.html"><b>서던 코퍼</b><small>SCCO · 특수 채굴 및 금속</small><p>시가총액 1,678억달러의 통합 구리 생산업체, 3년 연속 매출 및 영업이익 성장세</p></a><a class="card" href="SCHW.html"><b>찰스 슈왑</b><small>SCHW · 투자 은행 및 중개 서비스</small><p>수익성 개선을 통한 영업이익 성장세 가속화</p></a><a class="card" href="SHEL.html"><b>쉘 ADR</b><small>SHEL · 통합 오일 및 가스</small><p>쉘 ADR, 매출 2,669억달러 기록하며 영업이익률 업종 중앙값 대비 하회</p></a><a class="card" href="SHOP.html"><b>쇼피파이</b><small>SHOP · 온라인 서비스</small><p>쇼피파이, 매출 116억달러 기록하며 온라인 서비스 업종 내 상위 7위 규모 달성</p></a><a class="card" href="SKHY.html"><b>SK하이닉스 ADR</b><small>SKHY · 반도체</small><p>반도체 업종 상위 5% 수준의 영업이익률을 기록 중인 SK하이닉스 ADR</p></a><a class="card" href="SMFG.html"><b>스미토모 미쓰이 파이낸셜그룹 ADR</b><small>SMFG · 은행</small><p>수익성 개선을 통해 영업이익이 매출보다 빠르게 성장하는 구조 정착</p></a><a class="card" href="SNDK.html"><b>샌디스크</b><small>SNDK · 컴퓨터 하드웨어</small><p>2026년 매출 202억달러 달성 및 영업이익률 61.58% 기록</p></a><a class="card" href="SNOW.html"><b>스노우플레이크</b><small>SNOW · IT 서비스 및 컨설팅</small><p>스노우플레이크, 매출 성장세 회복과 영업이익률의 점진적 개선</p></a><a class="card" href="SNY.html"><b>사노피 ADR</b><small>SNY · 제약</small><p>2025년 매출액 467억달러 및 영업이익률 20.96%로 수익성 개선 확인</p></a><a class="card" href="SONY.html"><b>소니 그룹 ADR</b><small>SONY · 가정용 전자 제품</small><p>소니 그룹 ADR, 매출 감소에도 수익성 개선 통해 영업이익률 13.24% 기록</p></a><a class="card" href="SO.html"><b>서던</b><small>SO · 전력 유틸리티</small><p>서던(Southern Co), 매출 성장에도 수익성 개선은 제한적</p></a><a class="card" href="SPCX.html"><b>스페이스X</b><small>SPCX · 무선 통신 서비스</small><p>시가총액 2조 727억달러 규모의 스페이스X, 2025년 영업손실 21억달러 기록</p></a><a class="card" href="SPGI.html"><b>S&amp;P 글로벌</b><small>SPGI · 전문 정보 서비스</small><p>S&amp;P 글로벌, 3년 연속 매출 및 영업이익 성장세 지속</p></a><a class="card" href="SPOT.html"><b>스포티파이 테크놀러지</b><small>SPOT · 온라인 서비스</small><p>영업이익률 12.84% 기록하며 수익성 개선 가속화</p></a><a class="card" href="STX.html"><b>씨게이트</b><small>STX · 컴퓨터 하드웨어</small><p>시가총액 1,925억달러 규모의 씨게이트, 매출 확대와 마진 개선으로 영업이익 급성장</p></a><a class="card" href="SYK.html"><b>스트라이커</b><small>SYK · 의료 장비, 물품 및 유통</small><p>스트라이커, 3년 연속 매출 성장과 영업이익률 22.69% 달성으로 수익성 입증</p></a><a class="card" href="TD.html"><b>토론토 도미니언 은행</b><small>TD · 은행</small><p>매출 감소에도 영업이익률 37.71% 기록하며 수익성 개선</p></a><a class="card" href="TJX.html"><b>TJX 컴퍼니스</b><small>TJX · 할인점</small><p>매출 성장을 상회하는 이익 창출력과 높은 수익성 확보</p></a><a class="card" href="TMO.html"><b>써모 피셔 사이언티픽</b><small>TMO · 첨단 의료 장비 및 기술</small><p>써모 피셔 사이언티픽, 매출과 영업이익의 동반 상승세 지속</p></a><a class="card" href="TMUS.html"><b>T-모바일 US</b><small>TMUS · 무선 통신 서비스</small><p>매출 성장세 이어지며 업종 중앙값 대비 높은 수익성 유지</p></a><a class="card" href="TM.html"><b>토요타자동차 ADR</b><small>TM · 자동차 및 트럭 제조</small><p>매출 성장에도 불구하고 마진 축소로 영업이익 감소세 지속</p></a><a class="card" href="TSLA.html"><b>테슬라</b><small>TSLA · 자동차 및 트럭 제조</small><p>매출 감소 및 마진 축소로 영업이익 37.5% 감소</p></a><a class="card" href="TSM.html"><b>TSMC ADR</b><small>TSM · 반도체</small><p>매출 성장과 수익성 개선을 동반한 2025년 영업이익 급증</p></a><a class="card" href="TTE.html"><b>토탈에너지스</b><small>TTE · 통합 오일 및 가스</small><p>매출 감소폭 대비 수익성 하락 심화된 토탈에너지스</p></a><a class="card" href="TXN.html"><b>텍사스 인스트루먼트</b><small>TXN · 반도체</small><p>반도체 칩 설계 기업 텍사스 인스트루먼트, 2025년 매출과 영업이익 동반 성장</p></a><a class="card" href="T.html"><b>AT&amp;T</b><small>T · 무선 통신 서비스</small><p>매출 성장을 상회하는 영업이익 확대와 높은 수익성 확보</p></a><a class="card" href="UBER.html"><b>우버</b><small>UBER · 온라인 서비스</small><p>우버, 2025년 매출 520억달러 달성 및 영업이익률 11.89% 기록</p></a><a class="card" href="UBS.html"><b>UBS 그룹 AG</b><small>UBS · 투자 관리 및 펀드 운영</small><p>매출 감소에도 영업이익률 114.08% 기록하며 업종 상위 수준 유지</p></a><a class="card" href="UL.html"><b>유니레버 ADR</b><small>UL · 개인 생활 필수 용품</small><p>매출 감소 속에서도 마진 개선으로 방어한 2025년 영업이익 101억달러</p></a><a class="card" href="UNH.html"><b>유나이티드헬스 그룹</b><small>UNH · 의료 관리</small><p>유나이티드헬스 그룹, 매출 4,476억달러 기록했으나 마진 압박으로 영업이익 41.3% 감소</p></a><a class="card" href="UNP.html"><b>유니온 퍼시픽</b><small>UNP · 지상 화물 및 물류</small><p>3개년 연속 매출 및 영업이익 성장세 기록, 업종 내 상위 3%의 영업이익률 달성</p></a><a class="card" href="USB.html"><b>US 뱅코프</b><small>USB · 은행</small><p>U.S. 뱅코프, 매출 감소에도 영업이익률 44.19% 기록하며 수익성 개선</p></a><a class="card" href="VLO.html"><b>발레로 에너지</b><small>VLO · 오일, 가스 정제 및 마케팅</small><p>매출 감소에도 마진 개선으로 영업이익 증가세 전환</p></a><a class="card" href="VRTX.html"><b>버텍스 파마슈티컬</b><small>VRTX · 제약</small><p>시가총액 1,384억달러 규모의 버텍스 파마슈티컬, 3년 연속 매출 성장세 유지</p></a><a class="card" href="VRT.html"><b>버티브 홀딩스</b><small>VRT · 전기 부품 및 장비</small><p>매출 성장을 넘어선 마진 개선으로 영업이익 102.6% 증가 달성</p></a><a class="card" href="VZ.html"><b>버라이존</b><small>VZ · 통합 통신 서비스</small><p>버라이존, 2025년 매출액 1,382억달러 달성했으나 영업이익률은 22.90%로 소폭 하락</p></a><a class="card" href="V.html"><b>비자</b><small>V · 경영 지원 서비스</small><p>시가총액 6,876억달러의 글로벌 결제 네트워크 Visa, 견고한 영업이익률 달성</p></a><a class="card" href="WDC.html"><b>웨스턴 디지털</b><small>WDC · 컴퓨터 하드웨어</small><p>매출 회복과 마진 개선으로 영업이익 115.9% 성장 달성</p></a><a class="card" href="WELL.html"><b>웰타워</b><small>WELL · 특수 REITs</small><p>웰타워, 2025년 매출액 108억달러 달성했으나 영업이익률 3.11%로 마진 축소</p></a><a class="card" href="WFC.html"><b>웰스파고</b><small>WFC · 은행</small><p>웰스파고, 2025년 영업이익률 44.12% 기록하며 업종 중앙값 상회</p></a><a class="card" href="WMT.html"><b>월마트</b><small>WMT · 식품 소매 및 유통</small><p>매출 성장세 지속 속 영업이익 증가폭은 매출 확대 수준에 미치지 못해</p></a><a class="card" href="XOM.html"><b>엑슨모빌 홀딩스</b><small>XOM · 오일, 가스 정제 및 마케팅</small><p>매출 감소 및 마진 축소로 영업이익 12.6% 하락</p></a></div>
+</main>
+<footer class="site-foot">
+  <p class="site-disclaimer">이 리포트는 AI가 공개 데이터로 생성한 정보이며 투자 권유가 아닙니다. 투자의견과 목표주가는 제공하지 않습니다. 투자 판단과 그 결과에 대한 책임은 이용자 본인에게 있습니다.</p>
+  <p><a href="../about.html">소개</a> · <a href="../privacy.html">개인정보처리방침</a>
+     · <a href="https://github.com/Haweee47/custom-stock-analyst">코드</a></p>
+  <p class="site-small">2026-10-02 기준 · 리포트 1,013건</p>
+</footer>
+</body>
+</html>

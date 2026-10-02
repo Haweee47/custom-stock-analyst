@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>중국주식 AI 기업 리포트 | 리포트 셀프바</title>
+<meta name="description" content="중국주식 170종목 분석">
+<link rel="canonical" href="https://report-selfbar.pages.dev/cn/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="중국주식 AI 기업 리포트 | 리포트 셀프바">
+<meta property="og:description" content="중국주식 170종목 분석">
+<meta property="og:url" content="https://report-selfbar.pages.dev/cn/">
+<meta property="og:site_name" content="리포트 셀프바">
+
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin:0; background:#f6f7f9; color:#1b1f27;
+  font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif; }
+a { color:#1a4fd6; text-decoration:none; }
+a:hover { text-decoration:underline; }
+.site-top { display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:14px 20px; background:#0f1b2d; color:#fff; }
+.site-logo { color:#fff; font-weight:700; font-size:18px; }
+.site-nav a { color:#9fb3d1; margin-left:14px; font-size:14px; }
+.site-main { max-width:980px; margin:0 auto; padding:24px 16px 48px; }
+.site-foot { max-width:980px; margin:0 auto; padding:24px 16px 56px; color:#5f6672; font-size:13px; }
+.site-disclaimer { background:#fff; border:1px solid #e5e8ec; border-radius:8px; padding:12px 14px; }
+.site-small { color:#8a919c; }
+.hero { background:#fff; border:1px solid #e5e8ec; border-radius:12px; padding:28px 24px; margin-bottom:20px; }
+.hero h1 { margin:0 0 8px; font-size:26px; }
+.hero p { margin:6px 0; color:#4a5261; }
+.hero .stat { display:inline-block; margin-right:18px; font-weight:700; color:#0f1b2d; }
+.card-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; }
+.card { background:#fff; border:1px solid #e5e8ec; border-radius:10px; padding:14px 16px; }
+.card b { display:block; font-size:16px; margin-bottom:4px; }
+.card small { color:#6b7280; }
+.card p { margin:8px 0 0; font-size:14px; color:#3d4452; line-height:1.5; }
+.market-tabs { margin:18px 0 10px; }
+.market-tabs a { display:inline-block; padding:6px 12px; margin-right:6px; border-radius:999px;
+  background:#fff; border:1px solid #e5e8ec; font-size:14px; }
+.crumb { font-size:13px; color:#6b7280; margin-bottom:12px; }
+.search { width:100%; padding:12px 14px; font-size:15px; border:1px solid #d7dbe0; border-radius:8px; }
+.doc { background:#fff; border:1px solid #e5e8ec; border-radius:12px; padding:24px; line-height:1.7; }
+.doc h2 { font-size:18px; margin-top:24px; }
+
+
+/* 한 장의 지면처럼 보이는 것이 이 스타일의 목표다.
+
+   Streamlit은 st.html을 부를 때마다 별도 블록을 만든다. 조각마다 테두리를 두르면
+   리포트가 아니라 카드 대시보드처럼 보이므로, 조각에는 테두리를 두지 않고 흰 지면
+   위에 얇은 괘선으로만 구획을 나눈다. 배경색은 모든 면에 명시한다. 이용자가 다크
+   테마로 바꾸면 배경을 지정하지 않은 상자가 어두워지면서 검은 글자가 사라진다. */
+
+.rpt {
+  font-family: "Pretendard", "Malgun Gothic", "맑은 고딕",
+               "Apple SD Gothic Neo", system-ui, sans-serif;
+  color: #33383f; font-size: 13px; line-height: 1.72;
+  background: #ffffff; -webkit-font-smoothing: antialiased;
+}
+.rpt-inner { padding: 0 2px; }
+.rpt-top { height: 3px; background: #12386b; }
+.rpt-band {
+  display: flex; justify-content: space-between; align-items: baseline;
+  flex-wrap: wrap; gap: 4px 12px;
+  border-bottom: 1px solid #ecedf1; padding: 9px 2px 7px;
+  font-size: 10.5px; color: #6e7480; letter-spacing: .08em; text-transform: uppercase;
+}
+.rpt-brand { font-weight: 800; color: #12386b; letter-spacing: .14em; }
+
+.rpt-title {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  gap: 8px 20px; flex-wrap: wrap; padding-top: 14px;
+}
+.rpt-name {
+  font-size: 28px; font-weight: 800; color: #12386b; margin: 0;
+  letter-spacing: -.03em; line-height: 1.15;
+}
+.rpt-name small { font-size: 15px; font-weight: 600; color: #6e7480; letter-spacing: 0; }
+.rpt-meta {
+  font-size: 10.5px; color: #6e7480; text-align: right; line-height: 1.75;
+  white-space: nowrap;
+}
+.rpt-headline {
+  font-size: 17px; font-weight: 700; color: #14161a; margin: 10px 0 0;
+  padding-bottom: 13px; border-bottom: 2px solid #12386b;
+  letter-spacing: -.02em; line-height: 1.5; word-break: keep-all;
+}
+
+/* 수치 상자 - 표는 담아 두는 편이 읽기 쉬우므로 여기만 테두리를 남긴다 */
+.rpt-box {
+  border: 1px solid #d7dae0; background: #ffffff;
+  margin-bottom: 10px; overflow: hidden;
+}
+.rpt-box h4 {
+  margin: 0; padding: 6px 11px; font-size: 10.5px; font-weight: 700;
+  background: #f2f5fa; color: #12386b; border-bottom: 1px solid #d7dae0;
+  letter-spacing: .08em;
+}
+.rpt-scroll { overflow-x: auto; }
+
+table.rpt-t { width: 100%; border-collapse: collapse; font-size: 12px; background: #ffffff; }
+table.rpt-t td { padding: 5px 11px; border-bottom: 1px solid #ecedf1; }
+table.rpt-t td:first-child { color: #6e7480; white-space: nowrap; }
+table.rpt-t td:last-child {
+  text-align: right; font-weight: 700; color: #14161a;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+table.rpt-t tr:last-child td { border-bottom: none; }
+
+table.rpt-yr { width: 100%; border-collapse: collapse; font-size: 12px; background: #ffffff; }
+table.rpt-yr th {
+  background: #f2f5fa; color: #12386b; font-size: 10.5px; font-weight: 700;
+  padding: 6px 9px; border-bottom: 1px solid #d7dae0; text-align: right; white-space: nowrap;
+}
+table.rpt-yr th:first-child { text-align: left; }
+table.rpt-yr td {
+  padding: 5px 9px; border-bottom: 1px solid #ecedf1; text-align: right;
+  font-variant-numeric: tabular-nums; color: #14161a; font-weight: 600; white-space: nowrap;
+}
+table.rpt-yr td:first-child { text-align: left; color: #6e7480; font-weight: 400; }
+table.rpt-yr tr:last-child td { border-bottom: none; }
+
+.up { color: #c0392b; } .down { color: #1f5fa8; }
+
+/* 핵심포인트 - 리포트에서 가장 먼저 읽히는 자리라 지면과 톤을 다르게 준다 */
+.rpt-points {
+  margin: 2px 0 20px; padding: 14px 18px 14px 20px; background: #f2f5fa;
+  border-left: 3px solid #12386b; list-style: none;
+}
+.rpt-points li {
+  margin: 0 0 8px; font-size: 13px; line-height: 1.65; padding-left: 13px;
+  position: relative; word-break: keep-all; color: #14161a;
+}
+.rpt-points li:before {
+  content: ""; position: absolute; left: 0; top: .62em;
+  width: 4px; height: 4px; border-radius: 50%; background: #12386b;
+}
+.rpt-points li:last-child { margin-bottom: 0; }
+
+.rpt-sec { margin-bottom: 19px; }
+.rpt-sec h3 {
+  font-size: 14.5px; font-weight: 700; color: #12386b; margin: 0 0 7px;
+  padding-left: 10px; border-left: 3px solid #1a4d8f;
+  letter-spacing: -.02em; line-height: 1.45; word-break: keep-all;
+}
+.rpt-sec p { margin: 0; font-size: 13px; line-height: 1.78; word-break: keep-all; }
+
+/* 체크포인트와 리스크 - 좁은 화면에서는 두 칸이 눌리므로 접어서 쌓는다 */
+.rpt-cols { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.rpt-half {
+  flex: 1 1 260px; min-width: 0; background: #ffffff;
+  border: 1px solid #d7dae0; border-top: 2px solid #12386b; padding: 12px 15px;
+}
+.rpt-half h4 {
+  margin: 0 0 9px; font-size: 11px; font-weight: 700; color: #12386b;
+  letter-spacing: .06em;
+}
+.rpt-half ul { margin: 0; padding-left: 17px; }
+.rpt-half li { font-size: 12.3px; line-height: 1.65; margin-bottom: 6px; word-break: keep-all; }
+.rpt-half li:last-child { margin-bottom: 0; }
+
+/* 숫자 대조 결과 - 이 리포트가 다른 AI 리포트와 다른 점이라 눈에 띄게 둔다 */
+.rpt-verify {
+  font-size: 12px; line-height: 1.6; padding: 10px 14px; margin-bottom: 12px;
+  border: 1px solid #d7dae0; border-left: 3px solid #2f6b52; background: #eef5f1;
+  color: #14161a; word-break: keep-all;
+}
+.rpt-verify.warn { border-left-color: #9d6b1f; background: #faf3e6; }
+.rpt-verify .hint { margin-top: 5px; font-size: 11px; color: #6e7480; }
+
+.rpt-note {
+  background: #ffffff; border: 1px solid #d7dae0; padding: 13px 16px;
+}
+.rpt-note b { color: #12386b; font-size: 11px; letter-spacing: .06em; }
+.rpt-note div.body { font-size: 12.3px; line-height: 1.7; margin-top: 5px; word-break: keep-all; }
+.rpt-foot {
+  margin-top: 11px; padding-top: 10px; border-top: 1px solid #ecedf1;
+  font-size: 10.5px; color: #6e7480; line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .rpt-name { font-size: 23px; }
+  .rpt-headline { font-size: 15px; }
+  .rpt-meta { text-align: left; }
+}
+
+</style>
+</head>
+<body>
+<header class="site-top">
+  <a class="site-logo" href="../">리포트 셀프바</a>
+  <nav class="site-nav"><a href="../kr/">국내</a><a href="../us/">미국</a><a href="../jp/">일본</a><a href="../cn/">중국</a></nav>
+</header>
+<main class="site-main">
+<p class="crumb"><a href="..">홈</a> › 중국주식</p><div class='hero'><h1>중국주식 리포트 170건</h1><p>애널리스트가 다루지 않는 종목까지, 오늘 데이터로 만드는 AI 기업 리포트</p></div><div class="card-list"><a class="card" href="000001.html"><b>평안은행</b><small>000001 · 은행</small><p>매출 감소 및 마진 축소로 영업이익 23.2% 감소한 평안은행</p></a><a class="card" href="000063.html"><b>중흥통신(ZTE)</b><small>000063 · 통신 및 네트워킹</small><p>매출 1,339억위안 달성에도 영업이익률 하락으로 수익성 둔화</p></a><a class="card" href="000100.html"><b>TCL그룹</b><small>000100 · 전자 장비 및 부품</small><p>TCL그룹, 2025년 매출액 1,842억위안 기록하며 흑자 전환 달성</p></a><a class="card" href="000166.html"><b>신만굉원</b><small>000166 · 투자 은행 및 중개 서비스</small><p>영업이익률 49.73% 달성하며 수익성 개선세 지속</p></a><a class="card" href="000333.html"><b>메이디그룹</b><small>000333 · 가전제품, 도구 및 가정 용품</small><p>메이디그룹, 3년 연속 매출 및 영업이익 동반 성장세 유지</p></a><a class="card" href="000338.html"><b>유시동력</b><small>000338 · 자동차, 트럭 및 오토바이 부품</small><p>매출액 2,318억위안 기록했으나 비용 증가로 인한 마진 하락세 뚜렷</p></a><a class="card" href="000408.html"><b>장격광업</b><small>000408 · 상품 화학</small><p>영업이익률 42.58% 기록하며 상품 화학 업종 내 상위 1% 수익성 달성</p></a><a class="card" href="000568.html"><b>노주노교</b><small>000568 · 증류주 및 포도주</small><p>노주노교, 2025년 매출 및 영업이익 동반 하락하며 수익성 제고 과제 직면</p></a><a class="card" href="000651.html"><b>격력전기</b><small>000651 · 가전제품, 도구 및 가정 용품</small><p>매출 감소에도 마진 개선으로 영업이익 방어력 입증한 격력전기</p></a><a class="card" href="000657.html"><b>중오첨단신소재</b><small>000657 · 특수 채굴 및 금속</small><p>3년 연속 매출 및 영업이익 성장, 업종 내 상위권 수익성 기록</p></a><a class="card" href="000725.html"><b>경동방과기</b><small>000725 · 전자 장비 및 부품</small><p>BOE테크놀러지, 매출 성장세 지속 속 영업이익률 점진적 개선</p></a><a class="card" href="000776.html"><b>광발증권</b><small>000776 · 투자 관리 및 펀드 운영</small><p>광발증권(000776), 매출 및 영업이익의 동반 상승세 지속</p></a><a class="card" href="000792.html"><b>청해염화공업</b><small>000792 · 농화학제</small><p>영업이익률 44.52% 기록하며 업종 상위 2% 수익성 달성</p></a><a class="card" href="000858.html"><b>오량액</b><small>000858 · 증류주 및 포도주</small><p>오량액, 2025년 매출액 405억위안 기록하며 수익성 지표 둔화</p></a><a class="card" href="000977.html"><b>랑조전자신식산업</b><small>000977 · 컴퓨터 하드웨어</small><p>매출 1,648억위안 달성에도 영업이익률 1.43%로 업종 중앙값 하회</p></a><a class="card" href="000988.html"><b>화공과기</b><small>000988 · 전자 장비 및 부품</small><p>화공과기, 매출과 영업이익 동반 성장세 속 업종 평균 상회하는 수익성 기록</p></a><a class="card" href="001248.html"><b>China Resources New Energy Holdings Co Ltd Class A</b><small>001248 · 민자 발전 사업</small><p>영업이익률 44.47%로 업종 중앙값 대비 우수한 수익성 확보</p></a><a class="card" href="001280.html"><b>China National Uranium Co Ltd Class A</b><small>001280 · 우라늄</small><p>China National Uranium, 2025년 영업이익 전년 대비 41.5% 증가하며 수익성 개선</p></a><a class="card" href="001399.html"><b>HKC Corp Ltd Class A</b><small>001399 · 반도체</small><p>HKC Corp Ltd, 2025년 매출 409억위안 및 영업이익률 10.54% 기록</p></a><a class="card" href="002028.html"><b>사원전기</b><small>002028 · 전기 부품 및 장비</small><p>사원전기, 매출 성장에 따른 영업이익률 16.78% 기록하며 업종 대비 높은 수익성 유지</p></a><a class="card" href="002050.html"><b>삼화</b><small>002050 · 산업용 기계 및 장비</small><p>매출과 영업이익 동반 성장세 속 16.22%의 영업이익률 기록</p></a><a class="card" href="002142.html"><b>영파은행</b><small>002142 · 은행</small><p>영파은행, 3년 연속 외형 성장 지속했으나 영업이익률은 42.72%로 소폭 하락</p></a><a class="card" href="002281.html"><b>광신과기</b><small>002281 · 전자 장비 및 부품</small><p>매출과 영업이익 동반 성장세 속 8.47%의 영업이익률 기록</p></a><a class="card" href="002352.html"><b>순풍홀딩스</b><small>002352 · 배달, 우편, 항공 화물 및 육상 물류</small><p>순풍홀딩스, 3년 연속 매출 성장세 속 이익 개선폭 둔화</p></a><a class="card" href="002353.html"><b>양태이오일필드</b><small>002353 · 오일 관련 서비스 및 장비</small><p>양태이오일필드, 2025년 매출 162억위안 달성하며 성장세 지속</p></a><a class="card" href="002371.html"><b>북방화창</b><small>002371 · 반도체 장비 및 테스트</small><p>북방화창, 매출 394억위안 달성하며 외형 성장 지속</p></a><a class="card" href="002379.html"><b>산동 굉창려업강고</b><small>002379 · 알루미늄</small><p>2025년 매출액 1,567억위안 달성하며 수익성 개선</p></a><a class="card" href="002384.html"><b>동산정밀</b><small>002384 · 반도체</small><p>매출 성장세 지속에도 영업이익률 4.82%로 마진 압박 심화</p></a><a class="card" href="002415.html"><b>하이크비전</b><small>002415 · 통신 및 네트워킹</small><p>매출 정체에도 수익성 개선으로 영업이익 15.8% 증가한 하이크비전</p></a><a class="card" href="002463.html"><b>호사전자</b><small>002463 · 반도체</small><p>매출과 영업이익의 동반 성장으로 22.96%의 높은 영업이익률 달성</p></a><a class="card" href="002475.html"><b>입신정밀</b><small>002475 · 전자 장비 및 부품</small><p>입신정밀, 2025년 매출 3,323억위안으로 성장하며 영업이익 144억위안 기록</p></a><a class="card" href="002493.html"><b>영성석화</b><small>002493 · 상품 화학</small><p>영성석화, 2025년 매출 감소에도 마진율 방어하며 영업이익 흐름 유지</p></a><a class="card" href="002594.html"><b>비야디</b><small>002594 · 자동차 및 트럭 제조</small><p>매출 성장은 지속되었으나 수익성 마진 악화로 영업이익 감소</p></a><a class="card" href="002602.html"><b>세기화통</b><small>002602 · 소프트웨어</small><p>매출과 영업이익의 동반 고성장으로 확인된 수익성 개선</p></a><a class="card" href="002714.html"><b>목원식품</b><small>002714 · 어업 및 농업</small><p>매출 성장에도 불구하고 마진 축소로 영업이익 17.4% 감소</p></a><a class="card" href="002736.html"><b>국신증권</b><small>002736 · 투자 은행 및 중개 서비스</small><p>국신증권, 3년 연속 매출 및 영업이익 성장세 지속하며 업종 평균 상회하는 수익성 기록</p></a><a class="card" href="002916.html"><b>심남전로</b><small>002916 · 반도체</small><p>매출과 영업이익의 동반 상승세 지속, 영업이익률 업종 중앙값 대비 2.6배 기록</p></a><a class="card" href="002938.html"><b>펑딩홀딩스</b><small>002938 · 반도체</small><p>펑딩홀딩스, 2025년 영업이익 전년 대비 21.8% 증가하며 마진 개선 가속화</p></a><a class="card" href="003816.html"><b>CGN 파워</b><small>003816 · 민자 발전 사업</small><p>매출 감소 및 마진 축소로 영업이익 하락세 뚜렷</p></a><a class="card" href="300014.html"><b>이브에너지</b><small>300014 · 전기 부품 및 장비</small><p>이브에너지, 매출 성장세 회복에도 마진 악화로 영업이익은 감소</p></a><a class="card" href="300033.html"><b>동화순네트워크</b><small>300033 · 핀테크</small><p>매출과 영업이익의 동반 고성장으로 57.81%의 높은 영업이익률 달성</p></a><a class="card" href="300059.html"><b>동방재부정보</b><small>300059 · 투자 은행 및 중개 서비스</small><p>매출과 영업이익 동반 성장세 지속, 업종 중앙값 상회하는 수익성 달성</p></a><a class="card" href="300124.html"><b>회천기술</b><small>300124 · 전기 부품 및 장비</small><p>회천기술, 2025년 매출 451억위안 달성하며 성장세 지속</p></a><a class="card" href="300274.html"><b>양광전력</b><small>300274 · 재생 가능 에너지 장비 및 서비스</small><p>양광전력, 3년 연속 매출 및 영업이익 성장세 기록</p></a><a class="card" href="300308.html"><b>중제욱창</b><small>300308 · 통신 및 네트워킹</small><p>매출 성장을 상회하는 수익성 개선으로 영업이익 134억위안 기록</p></a><a class="card" href="300394.html"><b>천부광통신</b><small>300394 · 전자 장비 및 부품</small><p>매출과 영업이익의 동반 상승세 지속 및 업종 내 최상위권 수익성 기록</p></a><a class="card" href="300408.html"><b>삼배그룹</b><small>300408 · 전자 장비 및 부품</small><p>삼배그룹, 3년 연속 매출 및 영업이익 성장세 지속</p></a><a class="card" href="300433.html"><b>남사과기</b><small>300433 · 전자 장비 및 부품</small><p>매출 성장과 마진 개선이 동반된 수익성 회복세</p></a><a class="card" href="300442.html"><b>보리성생물과기</b><small>300442 · 통합 통신 서비스</small><p>보리성생물과기, 2025년 매출 57억위안 달성하며 외형 성장 지속</p></a><a class="card" href="300476.html"><b>성굉과기</b><small>300476 · 반도체</small><p>매출과 영업이익 동반 고성장으로 업종 평균 대비 높은 수익성 달성</p></a><a class="card" href="300498.html"><b>온씨식품</b><small>300498 · 어업 및 농업</small><p>온씨식품, 2025년 매출 감소와 마진 축소로 영업이익 46.6% 감소</p></a><a class="card" href="300502.html"><b>신역성통신기술</b><small>300502 · 전자 장비 및 부품</small><p>신역성통신기술, 매출 및 영업이익의 가파른 동반 성장세</p></a><a class="card" href="300604.html"><b>장천과기</b><small>300604 · 반도체 장비 및 테스트</small><p>장천과기, 2025년 영업이익 14억위안 달성하며 가파른 수익성 개선세 시현</p></a><a class="card" href="300750.html"><b>닝더스다이</b><small>300750 · 전기 부품 및 장비</small><p>매출과 이익의 동반 성장 속 영업이익률 17.56% 기록</p></a><a class="card" href="300757.html"><b>라박특과</b><small>300757 · 산업용 기계 및 장비</small><p>라박특과, 2025년 매출 감소와 함께 영업이익 적자 전환</p></a><a class="card" href="300760.html"><b>매서의료</b><small>300760 · 첨단 의료 장비 및 기술</small><p>매서의료, 2025년 매출 감소와 마진 축소로 영업이익 변동성 확대</p></a><a class="card" href="300857.html"><b>협창수거</b><small>300857 · 컴퓨터 하드웨어</small><p>협창수거, 매출 및 영업이익의 2년 연속 가파른 성장세 지속</p></a><a class="card" href="300999.html"><b>익해가리금룡어고분</b><small>300999 · 식품 가공</small><p>익해가리금룡어고분, 2025년 영업이익 전년 대비 183.9% 증가하며 수익성 개선</p></a><a class="card" href="301165.html"><b>예첩망락</b><small>301165 · 통합 통신 서비스</small><p>매출 성장과 마진 개선이 동반된 수익성 강화, 영업이익 8억위안 달성</p></a><a class="card" href="301200.html"><b>대족수공</b><small>301200 · 반도체 장비 및 테스트</small><p>매출 성장과 마진 개선의 동반 실현으로 업종 내 높은 수익성 확보</p></a><a class="card" href="301308.html"><b>강파룡</b><small>301308 · 반도체</small><p>강파룡, 매출 증가와 마진 개선으로 영업이익 241.6% 급증</p></a><a class="card" href="301377.html"><b>정태고과</b><small>301377 · 산업용 기계 및 장비</small><p>정태고과, 매출 증가율 상회하는 영업이익 성장에 따른 수익성 개선</p></a><a class="card" href="301526.html"><b>중경 국제복합재료</b><small>301526 · 상품 화학</small><p>매출 성장에 마진 개선까지 동반하며 영업이익 1,136.9% 급증</p></a><a class="card" href="302132.html"><b>중국항공공업 성도</b><small>302132 · 전기 부품 및 장비</small><p>중국항공공업 성도, 2025년 매출 및 영업이익의 큰 폭 성장 기록</p></a><a class="card" href="600000.html"><b>상해포동발전은행</b><small>600000 · 은행</small><p>상해포동발전은행, 2025년 영업이익률 33.26% 기록하며 마진 개선세 지속</p></a><a class="card" href="600015.html"><b>화하은행</b><small>600015 · 은행</small><p>매출 감소 속 영업이익 하락세 심화된 화하은행</p></a><a class="card" href="600016.html"><b>중국 민생은행</b><small>600016 · 은행</small><p>매출 감소 속 수익성 개선으로 영업이익 하락폭 제한</p></a><a class="card" href="600018.html"><b>상해항만그룹</b><small>600018 · 항만 운영 및 서비스</small><p>상해항만그룹, 2025년 영업이익률 27.44% 기록하며 업종 대비 높은 수익성 유지</p></a><a class="card" href="600019.html"><b>보산철강</b><small>600019 · 철 및 강철</small><p>보산철강, 매출 감소에도 수익성 개선으로 영업이익 41.6% 증가</p></a><a class="card" href="600025.html"><b>화능란창강수력발전</b><small>600025 · 민자 발전 사업</small><p>매출 성장세 지속에도 마진 하락으로 영업이익 증가폭은 매출에 미치지 못해</p></a><a class="card" href="600028.html"><b>중국석유화학</b><small>600028 · 오일, 가스 정제 및 마케팅</small><p>중국석유화학, 3년 연속 매출 및 영업이익 동반 감소세 지속</p></a><a class="card" href="600030.html"><b>중신증권</b><small>600030 · 투자 은행 및 중개 서비스</small><p>중신증권, 2025년 영업이익률 47.42%로 업종 중앙값 대비 우위 달성</p></a><a class="card" href="600031.html"><b>삼일중공업</b><small>600031 · 중장비 및 차량</small><p>삼일중공업, 2025년 매출 897억위안 달성하며 영업이익 성장세 지속</p></a><a class="card" href="600036.html"><b>초상은행</b><small>600036 · 은행</small><p>매출 감소에도 마진 개선으로 영업이익 방어한 초상은행</p></a><a class="card" href="600050.html"><b>차이나 유니콤</b><small>600050 · 통합 통신 서비스</small><p>차이나 유니콤, 마진 개선으로 영업이익 증감률 매출의 20.0배 기록</p></a><a class="card" href="600104.html"><b>상하자동차</b><small>600104 · 자동차 및 트럭 제조</small><p>상하자동차, 2025년 영업이익 전년 대비 84.7% 증가하며 수익성 회복세</p></a><a class="card" href="600111.html"><b>북방희토</b><small>600111 · 금 제외 귀금속 및 광물</small><p>북방희토, 2025년 영업이익 34억위안 기록하며 수익성 개선</p></a><a class="card" href="600150.html"><b>중국선박공업</b><small>600150 · 조선</small><p>중국선박공업, 2025년 영업이익 67억위안 달성하며 매출 대비 이익 성장세 확대</p></a><a class="card" href="600176.html"><b>중국거석</b><small>600176 · 건설 자재</small><p>중국거석, 2025년 영업이익률 24.13% 기록하며 업종 대비 월등한 수익성 증명</p></a><a class="card" href="600183.html"><b>생익과기</b><small>600183 · 전자 장비 및 부품</small><p>매출 성장을 상회하는 수익성 개선, 영업이익률 업종 중앙값 2.8배 기록</p></a><a class="card" href="600188.html"><b>연광그룹 Class A</b><small>600188 · 석탄</small><p>연광그룹, 매출 성장에도 마진 악화로 영업이익 29.7% 감소</p></a><a class="card" href="600276.html"><b>항서의약</b><small>600276 · 제약</small><p>매출 성장률의 2배 수준으로 확대되는 영업이익, 제약 업종 내 최상위 수익성 확보</p></a><a class="card" href="600309.html"><b>만화화학</b><small>600309 · 상품 화학</small><p>만화화학, 매출 성장에도 마진 압박으로 영업이익 2년 연속 감소세</p></a><a class="card" href="600346.html"><b>항력석화</b><small>600346 · 상품 화학</small><p>매출 감소에도 마진 개선으로 영업이익 성장세 기록</p></a><a class="card" href="600406.html"><b>국전남서과기</b><small>600406 · IT 서비스 및 컨설팅</small><p>매출 성장에 따른 이익 규모 확대와 업종 대비 우수한 수익성 지표</p></a><a class="card" href="600487.html"><b>강소형통광전</b><small>600487 · 통신 및 네트워킹</small><p>강소형통광전, 2025년 매출액 669억위안 기록하며 외형 성장 지속</p></a><a class="card" href="600489.html"><b>중금황금</b><small>600489 · 금</small><p>중금황금, 매출과 이익의 동반 성장 속 영업이익률 11.01% 기록</p></a><a class="card" href="600519.html"><b>귀주모태주</b><small>600519 · 증류주 및 포도주</small><p>귀주모태주, 2025년 매출 및 영업이익 동반 감소로 마진율 축소</p></a><a class="card" href="600522.html"><b>강소중천과기</b><small>600522 · 통신 및 네트워킹</small><p>강소중천과기, 매출 확대에도 영업이익 증가폭 제한적</p></a><a class="card" href="600547.html"><b>산동황금광업</b><small>600547 · 금</small><p>매출과 영업이익 동반 성장세 지속, 2025년 영업이익률 13.55% 기록</p></a><a class="card" href="600584.html"><b>강소장전기술</b><small>600584 · 반도체</small><p>매출 성장에 따른 영업이익 개선, 2025년 영업이익률 5.27% 기록</p></a><a class="card" href="600660.html"><b>복요유리</b><small>600660 · 자동차, 트럭 및 오토바이 부품</small><p>복요유리, 매출 대비 영업이익 증가 폭 확대하며 수익성 개선 지속</p></a><a class="card" href="600690.html"><b>해이지가</b><small>600690 · 가전제품, 도구 및 가정 용품</small><p>해이지가, 매출 3,023억위안 달성에도 마진 압박으로 영업이익은 소폭 감소</p></a><a class="card" href="600760.html"><b>중항침비</b><small>600760 · 항공우주 및 방위</small><p>중항침비, 매출 성장에 따른 영업이익 레버리지 효과 극대화</p></a><a class="card" href="600809.html"><b>산서행화촌분주</b><small>600809 · 증류주 및 포도주</small><p>매출 성장에 따른 외형 확대 지속, 2025년 매출액 387억위안 달성</p></a><a class="card" href="600837.html"><b>해통증권</b><small>600837 · 투자 은행 및 중개 서비스</small><p>해통증권, 3년 연속 매출 및 영업이익 하락세 지속</p></a><a class="card" href="600886.html"><b>국투전력</b><small>600886 · 민자 발전 사업</small><p>2025년 영업이익률 34.02%로 업종 중앙값 대비 우수한 수익성 확보</p></a><a class="card" href="600887.html"><b>이리실업그룹</b><small>600887 · 식품 가공</small><p>2025년 영업이익 128억위안 달성하며 수익성 개선</p></a><a class="card" href="600893.html"><b>중항엔진</b><small>600893 · 항공우주 및 방위</small><p>중항엔진, 2025년 매출 감소와 수익성 악화로 영업이익 12억위안 기록</p></a><a class="card" href="600900.html"><b>장강전력</b><small>600900 · 전력 유틸리티</small><p>장강전력, 2025년 매출 862억위안 기록하며 3년 연속 이익 성장세 유지</p></a><a class="card" href="600905.html"><b>중국장강삼협</b><small>600905 · 전력 유틸리티</small><p>중국장강삼협, 매출 284억위안 기록하며 수익성 지표 하락세</p></a><a class="card" href="600919.html"><b>장수은행</b><small>600919 · 은행</small><p>장수은행, 3년 연속 매출 및 영업이익 성장세 기록</p></a><a class="card" href="600926.html"><b>항주은행</b><small>600926 · 은행</small><p>항주은행, 매출 증가세 둔화에도 수익성 개선을 통한 영업이익 성장 지속</p></a><a class="card" href="600930.html"><b>Huadian New Energy Group Corp Ltd Class A</b><small>600930 · 민자 발전 사업</small><p>신재생에너지 사업을 영위하는 Huadian New Energy, 시가총액 1,639억위안 기록</p></a><a class="card" href="600938.html"><b>중국해유</b><small>600938 · 통합 오일 및 가스</small><p>중국해유, 2025년 매출과 영업이익 동반 감소하며 마진 축소</p></a><a class="card" href="600989.html"><b>닝샤바오펑에너지</b><small>600989 · 상품 화학</small><p>매출과 영업이익 동반 성장세 지속, 업종 중앙값 대비 압도적 수익성 달성</p></a><a class="card" href="600999.html"><b>초상증권</b><small>600999 · 투자 은행 및 중개 서비스</small><p>매출과 이익의 동반 성장 속 업종 대비 우수한 수익성 확보</p></a><a class="card" href="601009.html"><b>남경은행</b><small>601009 · 은행</small><p>남경은행, 매출 성장세 지속에도 영업이익률은 42.72%로 다소 하락</p></a><a class="card" href="601066.html"><b>중신건투증권</b><small>601066 · 투자 은행 및 중개 서비스</small><p>중신건투증권, 2025년 영업이익률 44.63%로 업종 중앙값 대비 우위 달성</p></a><a class="card" href="601088.html"><b>신화에너지</b><small>601088 · 석탄</small><p>신화에너지, 3년 연속 매출 및 영업이익 하락세 지속</p></a><a class="card" href="601100.html"><b>항립유항</b><small>601100 · 산업용 기계 및 장비</small><p>매출 성장세 지속에도 마진율 소폭 하락하며 이익 증가폭 제한</p></a><a class="card" href="601138.html"><b>부사강산업인터넷</b><small>601138 · 통신 및 네트워킹</small><p>부사강산업인터넷, 2025년 매출 9,029억위안 달성하며 이익률 개선세 확인</p></a><a class="card" href="601166.html"><b>흥업은행</b><small>601166 · 은행</small><p>매출과 영업이익 동반 감소 속 수익성 개선으로 방어</p></a><a class="card" href="601169.html"><b>북경은행</b><small>601169 · 은행</small><p>북경은행, 2025년 매출액 1,207억위안 기록하며 수익성 다소 위축</p></a><a class="card" href="601211.html"><b>국태해통증권</b><small>601211 · 투자 은행 및 중개 서비스</small><p>국태해통증권, 3년 연속 매출 및 영업이익 성장세 지속</p></a><a class="card" href="601225.html"><b>섬서석탄</b><small>601225 · 석탄</small><p>섬서석탄, 매출 하락폭보다 2.2배 큰 영업이익 감소로 수익성 지표 둔화</p></a><a class="card" href="601229.html"><b>상하이은행</b><small>601229 · 은행</small><p>상하이은행, 매출 감소에도 영업이익률 48.17%로 업종 중앙값 상회</p></a><a class="card" href="601288.html"><b>농업은행</b><small>601288 · 은행</small><p>매출 감소에도 마진 개선을 통해 당기순이익 성장세 유지</p></a><a class="card" href="601318.html"><b>중국평안보험</b><small>601318 · 생명 및 건강 보험</small><p>중국평안보험, 3년 연속 매출과 이익의 동반 성장세 유지</p></a><a class="card" href="601319.html"><b>중국인민보험그룹</b><small>601319 · 손해보험</small><p>중국인민보험그룹, 2025년 매출 6,172억위안 기록하며 3년 연속 외형 성장 지속</p></a><a class="card" href="601328.html"><b>교통은행</b><small>601328 · 은행</small><p>매출 감소에도 불구하고 마진 개선으로 영업이익 방어에 성공한 교통은행</p></a><a class="card" href="601336.html"><b>신화생명보험</b><small>601336 · 생명 및 건강 보험</small><p>신화생명보험, 매출 대비 이익 증가폭 가속화로 영업이익률 55.50% 기록</p></a><a class="card" href="601398.html"><b>ICBC(중국공상은행)</b><small>601398 · 은행</small><p>매출 감소에도 효율적 비용 관리로 영업이익 1.8% 성장 시현</p></a><a class="card" href="601600.html"><b>중국려업</b><small>601600 · 알루미늄</small><p>중국려업, 영업이익률 12.56%로 업종 중앙값 대비 2.2배 높은 수익성 기록</p></a><a class="card" href="601601.html"><b>태평양보험</b><small>601601 · 생명 및 건강 보험</small><p>매출 성장을 상회하는 이익 개선세로 영업이익률 21.50% 달성</p></a><a class="card" href="601628.html"><b>중국생명보험</b><small>601628 · 생명 및 건강 보험</small><p>영업이익률 52.63% 기록하며 2024년 대비 영업이익 53.4% 성장</p></a><a class="card" href="601658.html"><b>중국우정저축은행</b><small>601658 · 은행</small><p>중국우정저축은행, 매출 감소에도 비용 효율화를 통해 영업이익 10.4% 성장</p></a><a class="card" href="601668.html"><b>CSCEC(중국건축)</b><small>601668 · 건설 및 엔지니어링</small><p>중국건축, 매출과 이익의 동반 하락 속 업종 내 상위 수익성 유지</p></a><a class="card" href="601688.html"><b>화태증권</b><small>601688 · 투자 은행 및 중개 서비스</small><p>영업이익률 46.42%로 업종 평균 상회, 매출 대비 이익 효율성 극대화</p></a><a class="card" href="601698.html"><b>중국위성통신</b><small>601698 · 무선 통신 서비스</small><p>중국위성통신, 2025년 영업이익률 16.55%로 업종 중앙값 대비 압도적 효율성 달성</p></a><a class="card" href="601728.html"><b>차이나 텔레콤</b><small>601728 · 통합 통신 서비스</small><p>차이나 텔레콤, 2025년 매출 5,239억위안 기록하며 영업이익률 7.55% 달성</p></a><a class="card" href="601766.html"><b>CRRC(중국중차)</b><small>601766 · 중장비 및 차량</small><p>CRRC, 3년 연속 매출 및 영업이익 성장세 기록하며 시가총액 업종 내 2위 유지</p></a><a class="card" href="601816.html"><b>경호고속철로</b><small>601816 · 고속도로 및 철도</small><p>경호고속철로, 3년 연속 매출 성장세 유지하나 영업이익 증가 폭은 둔화</p></a><a class="card" href="601818.html"><b>광대은행</b><small>601818 · 은행</small><p>매출과 이익의 동반 하락세 지속, 영업이익률 업종 중앙값 하회</p></a><a class="card" href="601857.html"><b>페트로차이나</b><small>601857 · 통합 오일 및 가스</small><p>페트로차이나 2025년 영업이익 2,383억위안 기록, 매출 및 이익 2년 연속 감소세</p></a><a class="card" href="601869.html"><b>장비광섬유광케이블</b><small>601869 · 통신 및 네트워킹</small><p>장비광섬유광케이블, 2025년 영업이익 전년 대비 70% 성장하며 수익성 개선</p></a><a class="card" href="601872.html"><b>초상기선</b><small>601872 · 해양 화물 및 물류</small><p>매출 성장에 따른 외형 확대에도 영업이익률은 22.52%로 소폭 하락</p></a><a class="card" href="601888.html"><b>CTG면세점</b><small>601888 · 공항 운영 및 서비스</small><p>CTG면세점, 3년 연속 매출 및 영업이익 동반 감소세 지속</p></a><a class="card" href="601898.html"><b>중국석탄에너지</b><small>601898 · 석탄</small><p>중국석탄에너지, 매출 감소에도 수익성 개선을 통한 영업이익 방어력 입증</p></a><a class="card" href="601899.html"><b>자금광업 Class A</b><small>601899 · 금</small><p>매출 성장을 상회하는 영업이익 확대와 수익성 개선이 돋보이는 2025년 실적</p></a><a class="card" href="601919.html"><b>코스코해운</b><small>601919 · 해양 화물 및 물류</small><p>코스코해운, 2025년 영업이익 전년 대비 41.7% 감소하며 수익성 둔화</p></a><a class="card" href="601939.html"><b>건설은행</b><small>601939 · 은행</small><p>매출 감소에도 마진 개선으로 수익성 방어한 건설은행</p></a><a class="card" href="601985.html"><b>중국핵전</b><small>601985 · 민자 발전 사업</small><p>매출 성장세 이어가는 중국핵전, 영업이익률은 업종 상위 25% 수준 유지</p></a><a class="card" href="601988.html"><b>중국은행</b><small>601988 · 은행</small><p>매출 감소에도 효율적 비용 관리로 영업이익과 당기순이익 방어에 성공한 중국은행</p></a><a class="card" href="601998.html"><b>중신은행</b><small>601998 · 은행</small><p>중신은행, 매출 감소세 속에서도 마진 개선을 통해 영업이익 방어</p></a><a class="card" href="603019.html"><b>중과서광</b><small>603019 · 컴퓨터 하드웨어</small><p>매출 성장세 회복에도 영업이익률은 12.13%로 하락하며 수익성 개선 둔화</p></a><a class="card" href="603228.html"><b>징왕전자</b><small>603228 · 반도체</small><p>징왕전자, 매출 성장세 지속에도 마진 축소로 이익 증가폭 둔화</p></a><a class="card" href="603256.html"><b>굉화전자재료과기</b><small>603256 · 전자 장비 및 부품</small><p>굉화전자재료과기, 매출 성장과 마진 개선을 통해 영업이익 3억위안 달성</p></a><a class="card" href="603259.html"><b>우시앱텍</b><small>603259 · 생명 공학 및 의학 연구</small><p>우시앱텍, 2025년 영업이익 177억위안으로 매출 대비 5.7배 높은 성장세 시현</p></a><a class="card" href="603268.html"><b>Guangdong Songfa Ceramics Co Ltd Class A</b><small>603268 · 조선</small><p>업종 내 높은 가치 평가를 받는 조선업체, 시가총액 2,012억위안 기록</p></a><a class="card" href="603288.html"><b>해천미업</b><small>603288 · 식품 가공</small><p>2025년 영업이익 80억위안 달성하며 3년 연속 매출 및 이익 성장세 지속</p></a><a class="card" href="603296.html"><b>화근기술</b><small>603296 · 컴퓨터 하드웨어</small><p>화근기술, 2025년 매출액 1,714억위안 달성하며 성장세 지속</p></a><a class="card" href="603986.html"><b>기가디바이스</b><small>603986 · 반도체</small><p>기가디바이스, 매출 및 영업이익의 연속 성장으로 영업이익률 15.72% 달성</p></a><a class="card" href="603993.html"><b>낙양몰리브덴</b><small>603993 · 특수 채굴 및 금속</small><p>매출 감소에도 영업이익 51.2% 급증, 수익성 개선 돋보여</p></a><a class="card" href="605117.html"><b>영파 덕업과기</b><small>605117 · 재생 가능 에너지 장비 및 서비스</small><p>영파더업과기, 2025년 매출 122억위안 기록하며 3년 연속 성장세 지속</p></a><a class="card" href="688008.html"><b>몬타지 테크놀로지</b><small>688008 · 반도체</small><p>매출 성장을 상회하는 이익 창출력, 영업이익률 업종 중앙값 대비 5.9배 기록</p></a><a class="card" href="688012.html"><b>AMEC(중미반도체)</b><small>688012 · 반도체 장비 및 테스트</small><p>매출 124억위안 달성하며 성장세 지속, 영업이익률은 11.92% 기록</p></a><a class="card" href="688041.html"><b>해광신식</b><small>688041 · 반도체</small><p>매출 144억위안 달성하며 성장세 지속하나 이익률은 다소 하락</p></a><a class="card" href="688072.html"><b>척형과기</b><small>688072 · 반도체 장비 및 테스트</small><p>2025년 매출액 65억위안 달성, 외형 성장 속 영업이익률 업종 중앙값 상회</p></a><a class="card" href="688082.html"><b>ACM 리서치</b><small>688082 · 반도체 장비 및 테스트</small><p>ACM 리서치, 3년 연속 매출 성장 기록했으나 영업이익률은 19.20%로 하락</p></a><a class="card" href="688111.html"><b>베이징 킹소프트 오피스 소프트웨어</b><small>688111 · 소프트웨어</small><p>매출 성장세 지속에도 마진 하락으로 영업이익 증가폭 둔화</p></a><a class="card" href="688120.html"><b>화해청과</b><small>688120 · 반도체 장비 및 테스트</small><p>매출 성장세 지속에도 마진율 하락하며 영업이익 증가폭 둔화</p></a><a class="card" href="688146.html"><b>중선특기</b><small>688146 · 상품 화학</small><p>중선특기, 매출 확대와 영업이익률 개선으로 이익 성장세 회복</p></a><a class="card" href="688183.html"><b>생익전자</b><small>688183 · 반도체</small><p>매출 대비 영업이익 가파른 성장세, 2025년 영업이익 17억위안 달성</p></a><a class="card" href="688256.html"><b>한무기</b><small>688256 · 반도체</small><p>한무기, 매출액 65억위안 달성하며 2025년 흑자 전환 성공</p></a><a class="card" href="688361.html"><b>중과비측기</b><small>688361 · 산업용 기계 및 장비</small><p>반도체 검사 장비 매출 성장세와 영업이익 흑자 전환 달성</p></a><a class="card" href="688498.html"><b>합서원걸반도체과기</b><small>688498 · 반도체</small><p>매출 성장과 수익성 개선을 동반한 2025년 영업이익 2억위안 달성</p></a><a class="card" href="688525.html"><b>백유존저과기</b><small>688525 · 반도체</small><p>매출 성장과 마진 개선이 동반된 수익성 회복세</p></a><a class="card" href="688702.html"><b>소주 성과통신</b><small>688702 · 반도체</small><p>소주 성과통신, 2025년 매출 증가세에도 영업이익 적자 폭 확대 지속</p></a><a class="card" href="688981.html"><b>중신 국제집성전로제조</b><small>688981 · 반도체</small><p>중신 국제집성전로제조, 2025년 영업이익 전년 대비 139.8% 증가하며 마진 개선 가속화</p></a></div>
+</main>
+<footer class="site-foot">
+  <p class="site-disclaimer">이 리포트는 AI가 공개 데이터로 생성한 정보이며 투자 권유가 아닙니다. 투자의견과 목표주가는 제공하지 않습니다. 투자 판단과 그 결과에 대한 책임은 이용자 본인에게 있습니다.</p>
+  <p><a href="../about.html">소개</a> · <a href="../privacy.html">개인정보처리방침</a>
+     · <a href="https://github.com/Haweee47/custom-stock-analyst">코드</a></p>
+  <p class="site-small">2026-10-02 기준 · 리포트 1,013건</p>
+</footer>
+</body>
+</html>
